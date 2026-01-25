@@ -66,10 +66,8 @@ tab1, tab2 = st.tabs(["📧 Compose (Alice)", "🔓 Decrypt (Bob)"])
 with tab1:
     st.header("Compose Secure Email")
     
-    # User Inputs
     sender_email = st.text_input("Your Gmail Address", placeholder="you@gmail.com")
-    # SECURITY NOTE: In a real app, use environment variables!
-    app_password = st.text_input("Google App Password", type="password", help="Go to Google Account > Security > App Passwords")
+    app_password = st.text_input("Google App Password", type="password")
     recipient_email = st.text_input("Recipient Email")
     
     security_level = st.selectbox("Encryption Protocol", 
@@ -83,12 +81,12 @@ with tab1:
         else:
             # A. Get Key from KM
             key_id, q_key = get_quantum_key()
+            q_key_str = q_key.decode() # Decode for display
             
             # B. Encrypt
             cipher_text = encrypt_message(body, q_key, security_level)
             
             # C. Construct Payload
-            # This is what actually travels over the internet
             email_payload = f"""
 --- ⚛️ QUMAIL SECURE TRANSMISSION ⚛️ ---
 KEY_ID: {key_id}
@@ -97,56 +95,58 @@ SECURITY_LEVEL: {security_level}
 {cipher_text}
 ---------------------------------------
 """
-            # D. Send via Gmail SMTP
+            # D. Send via Gmail
             try:
-                # Setup the server connection
                 server = smtplib.SMTP("smtp.gmail.com", 587)
-                server.starttls() # Secure the connection
+                server.starttls()
                 server.login(sender_email, app_password)
-                
-                # Send
                 msg = MIMEText(email_payload)
                 msg['Subject'] = f"⚛️ Secure Msg [ID: {key_id}]"
                 msg['From'] = sender_email
                 msg['To'] = recipient_email
-                
                 server.sendmail(sender_email, recipient_email, msg.as_string())
                 server.quit()
                 
-                st.success("Message Sent Successfully!")
-                st.info(f"Quantum Key ID `{key_id}` has been synchronized to the network.")
+                st.success("Message Sent!")
                 
-                # Show debug info for the judges
-                with st.expander("See what the Hacker sees (Encrypted Payload)"):
-                    st.code(email_payload)
-                    
+                # --- THE FIX: SHOW THE KEY FOR THE DEMO ---
+                st.warning("⚠️ DEMO MODE: Since we don't have real Quantum Fiber cables, you must manually copy this key to the receiver.")
+                st.text_input("🔑 QUANTUM KEY (Copy this to Receiver Tab)", value=q_key_str)
+                
             except Exception as e:
-                st.error(f"Failed to send email. Did you use an App Password? Error: {e}")
-                # Fallback for demo if email fails
-                st.warning("⚠️ Email failed, but Key was generated. You can still test decryption in Tab 2!")
-                st.code(email_payload)
+                st.error(f"Email failed: {e}")
+                # Still show key for testing
+                st.text_input("🔑 QUANTUM KEY (Copy this to Receiver Tab)", value=q_key_str)
 
 # === TAB 2: RECEIVER ===
 with tab2:
     st.header("Decrypt Message")
-    st.markdown("Paste the **Cipher Text** and **Key ID** from the email you received.")
+    st.markdown("Paste the **Cipher Text** from email and the **Quantum Key** (simulating the hardware sync).")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        rx_key_id = st.text_input("Enter Key ID (e.g., 4A2B)", max_chars=10)
-    with col2:
-        # Just a visual placeholder for the "Connected" status
-        st.success("✅ Connected to Quantum Node")
-        
-    rx_ciphertext = st.text_area("Paste Encrypted Text (The gibberish part)", height=100)
+    # Updated Input Fields
+    rx_ciphertext = st.text_area("1. Paste Encrypted Text (Gibberish)", height=100)
+    rx_manual_key = st.text_input("2. Paste Quantum Key (From Sender Tab)", type="password")
     
-    if st.button("🔓 Decrypt with Quantum Key"):
-        result = decrypt_message(rx_ciphertext, rx_key_id)
-        
-        if "❌" in result:
-            st.error(result)
+    if st.button("🔓 Decrypt"):
+        if not rx_manual_key:
+            st.error("Missing Quantum Key! In real life, the hardware provides this. In the demo, you must paste it.")
         else:
-            st.balloons() # Fun effect for a successful demo
-            st.success("Decryption Successful!")
-            st.markdown(f"**Original Message:**")
-            st.info(result)
+            try:
+                f = Fernet(rx_manual_key.encode())
+                # Handle OTP Tag
+                clean_text = rx_ciphertext.replace("OTP_MODE::", "").strip()
+                # Remove header/footer if pasted by accident
+                if "---" in clean_text: 
+                    # Quick hack to grab just the middle encrypted part if user pasted the whole email
+                    lines = clean_text.splitlines()
+                    # Filter for the long random string
+                    clean_text = [line for line in lines if len(line) > 50 and "KEY_ID" not in line][0]
+
+                decrypted_bytes = f.decrypt(clean_text.encode())
+                
+                st.balloons()
+                st.success("Decryption Successful!")
+                st.markdown(f"**Original Message:**")
+                st.info(decrypted_bytes.decode())
+            except Exception as e:
+                st.error(f"Decryption Failed. Key might be wrong. Error: {e}")
