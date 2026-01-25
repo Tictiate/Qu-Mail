@@ -21,6 +21,15 @@
 2. Install dependencies: `pip install streamlit cryptography`
 3. Run the app: `streamlit run app.py`
 
+## 📐 How To Test
+1. Go to `qumail-demo.streamlit.app`
+2. In the compose tab, put in a test email (eg. test@test.com) and type in any message.
+3. Click on "Encrypt & Send"
+4. It will say "Failed to send email" BUT look at the yellow warning box below it.
+5. Inside that box, you will see the KEY_ID (e.g., 8F2A) and the long gibberish text (the cipher_text). Copy them.
+6. Go to Tab 2. Paste the Key ID and the gibberish text. Click Decrypt.
+7. You should see your message appear with balloons.
+
 ## 🔮 Future Roadmap
 - Integration with physical QKD hardware (ID Quantique / Toshiba).
 - Expansion to **QuSuite** (Quantum Secure Chat & VoIP).
