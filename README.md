@@ -23,7 +23,7 @@
 
 ## 📐 How To Test
 1. Go to `qumail-demo.streamlit.app`
-2. In the compose tab, put in a test email (eg. test@test.com) and type in any message.
+2. In the compose tab, put in a test email for the recipient (eg. test@test.com) and type in any message. (you can keep the sender e-mail and password blank)
 3. Click on "Encrypt & Send"
 4. It will say "Failed to send email" BUT look at the yellow warning box below it.
 5. Inside that box, you will see the KEY_ID (e.g., 8F2A) and the long gibberish text (the cipher_text). Copy them.
