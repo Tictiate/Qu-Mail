@@ -3,9 +3,9 @@ import random
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QListWidget, QTextEdit, QLabel, 
                              QPushButton, QSplitter, QLineEdit, QMessageBox, 
-                             QStackedWidget, QComboBox, QFileDialog, QProgressBar)
+                             QStackedWidget, QFileDialog, QProgressBar)
 from PyQt6.QtCore import Qt, QTimer
-from backend import db, crypto, network  # Added network import
+from backend import db, crypto, network
 
 class QuMailClient(QMainWindow):
     def __init__(self):
@@ -24,25 +24,27 @@ class QuMailClient(QMainWindow):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         
-        left_layout.addWidget(QLabel("👤 Current User:"))
-        self.user_combo = QComboBox()
-        self.user_combo.addItems(["alice@quantum.com", "bob@quantum.com", "eve@hacker.net"])
-        self.user_combo.currentTextChanged.connect(self.change_user)
-        left_layout.addWidget(self.user_combo)
+        # 1. IDENTITY BOX (New!)
+        left_layout.addWidget(QLabel("👤 My Identity:"))
+        self.input_identity = QLineEdit()
+        self.input_identity.setText("alice@quantum.com") # Default
+        self.input_identity.textChanged.connect(self.update_identity)
+        left_layout.addWidget(self.input_identity)
         
+        # 2. Navigation List
         self.nav_list = QListWidget()
         self.nav_list.addItems(["📥 Inbox", "✍️ Compose", "📤 Sent"])
         self.nav_list.currentRowChanged.connect(self.switch_mode)
         left_layout.addWidget(self.nav_list)
 
-        # BUTTONS & DASHBOARD
+        # 3. Hacker Button
         self.btn_hack = QPushButton("🔴 SIMULATE ATTACK")
         self.btn_hack.setCheckable(True)
         self.btn_hack.setStyleSheet("background-color: #550000; color: white; border: 1px solid red;")
         self.btn_hack.clicked.connect(self.toggle_attack)
         left_layout.addWidget(self.btn_hack)
 
-        # DASHBOARD
+        # 4. Dashboard
         status_widget = QWidget()
         status_widget.setStyleSheet("background-color: #2d2d2d; border-radius: 5px; padding: 5px; margin-top: 10px;")
         status_layout = QVBoxLayout(status_widget)
@@ -89,7 +91,6 @@ class QuMailClient(QMainWindow):
         self.compose_view = QWidget()
         compose_layout = QVBoxLayout(self.compose_view)
         
-        # NEW: IP Input
         self.input_ip = QLineEdit()
         self.input_ip.setPlaceholderText("Target IP (e.g., 192.168.1.5)")
         self.input_ip.setStyleSheet("border: 1px solid #0e639c;")
@@ -122,7 +123,6 @@ class QuMailClient(QMainWindow):
         self.right_pane.addWidget(self.read_view)
         self.right_pane.addWidget(self.compose_view)
         
-        # SPLITTER SETUP
         self.splitter.addWidget(left_widget)
         self.splitter.addWidget(self.email_list)
         self.splitter.addWidget(self.right_pane)
@@ -131,12 +131,25 @@ class QuMailClient(QMainWindow):
         
         # INIT
         db.init_db()
-        network.start_server() # Start Listening!
-        self.current_user = "alice@quantum.com"
+        network.start_server(self.trigger_refresh) # Pass the refresh function!
+        self.current_user = self.input_identity.text()
         self.current_folder = "inbox"
         self.current_attachment_path = None
         self.apply_dark_theme()
         self.load_emails()
+
+    # --- LOGIC ---
+
+    def update_identity(self):
+        """Updates who I am when I type in the top box"""
+        self.current_user = self.input_identity.text()
+        self.load_emails() # Reload inbox for the new user name
+
+    def trigger_refresh(self):
+        """Called by network when new mail arrives"""
+        print("📩 New Mail! Refreshing UI...")
+        # Since this is called from a thread, we use a Timer to update GUI safely
+        QTimer.singleShot(0, self.load_emails)
 
     def send_email(self):
         target_ip = self.input_ip.text().strip()
@@ -149,11 +162,9 @@ class QuMailClient(QMainWindow):
             return
 
         try:
-            # 1. Encrypt
             key_id, key = crypto.generate_quantum_key()
             encrypted_body = crypto.encrypt_content(body, key)
             
-            # File
             filename = None
             encrypted_file = None
             raw_bytes = None
@@ -163,10 +174,8 @@ class QuMailClient(QMainWindow):
                     raw_bytes = f.read()
                 encrypted_file = crypto.encrypt_file_bytes(raw_bytes, key)
 
-            # 2. Save Locally (Sent Box)
             db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
 
-            # 3. Send over Network
             success, msg = network.send_p2p_email(
                 target_ip, self.current_user, receiver, subject, 
                 encrypted_body, key_id, key.decode(), filename, encrypted_file
@@ -182,14 +191,9 @@ class QuMailClient(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
-    # --- KEEP YOUR EXISTING HELPER FUNCTIONS BELOW ---
-    # (Copy-paste the update_status, toggle_attack, switch_mode, change_user, 
-    #  load_emails, open_email, select_file, decrypt, download, apply_dark_theme 
-    #  from the previous response here. They have not changed.)
-    
     def update_status(self):
         noise = random.uniform(0.1, 1.5)
-        if self.current_user == "eve@hacker.net": 
+        if self.btn_hack.isChecked(): 
             noise = random.uniform(25.0, 55.0)
             self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #ff3333; }")
         else:
@@ -200,11 +204,9 @@ class QuMailClient(QMainWindow):
     def toggle_attack(self):
         if self.btn_hack.isChecked():
             self.btn_hack.setText("⚠️ ATTACK ACTIVE")
-            self.current_user = "eve@hacker.net"
             QMessageBox.warning(self, "INTERCEPTION STARTED", "Quantum Channel Compromised!")
         else:
             self.btn_hack.setText("🔴 SIMULATE ATTACK")
-            self.current_user = "alice@quantum.com"
 
     def switch_mode(self, index):
         if index == 0:
@@ -217,10 +219,6 @@ class QuMailClient(QMainWindow):
             self.current_folder = "sent"
             self.right_pane.setCurrentIndex(0)
             self.load_emails()
-
-    def change_user(self, new_user):
-        self.current_user = new_user
-        self.nav_list.setCurrentRow(0)
 
     def load_emails(self):
         self.email_list.clear()
@@ -286,7 +284,7 @@ class QuMailClient(QMainWindow):
             QListWidget { background-color: #252526; color: #cccccc; border: none; font-size: 14px; }
             QListWidget::item { padding: 10px; }
             QListWidget::item:selected { background-color: #37373d; color: white; }
-            QLineEdit, QTextEdit, QComboBox { background-color: #3c3c3c; color: white; border: 1px solid #555; padding: 5px; }
+            QLineEdit, QTextEdit { background-color: #3c3c3c; color: white; border: 1px solid #555; padding: 5px; }
             QPushButton { background-color: #0e639c; color: white; padding: 8px; border-radius: 4px; }
             QPushButton:hover { background-color: #1177bb; }
             QLabel { color: #cccccc; }
