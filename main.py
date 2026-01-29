@@ -17,34 +17,31 @@ class QuMailClient(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
-        
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # --- LEFT PANE (Navigation) ---
+        # --- LEFT PANE ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         
-        # 1. IDENTITY BOX (New!)
         left_layout.addWidget(QLabel("👤 My Identity:"))
         self.input_identity = QLineEdit()
-        self.input_identity.setText("alice@quantum.com") # Default
+        self.input_identity.setText("alice@quantum.com") 
         self.input_identity.textChanged.connect(self.update_identity)
         left_layout.addWidget(self.input_identity)
         
-        # 2. Navigation List
         self.nav_list = QListWidget()
         self.nav_list.addItems(["📥 Inbox", "✍️ Compose", "📤 Sent"])
         self.nav_list.currentRowChanged.connect(self.switch_mode)
         left_layout.addWidget(self.nav_list)
 
-        # 3. Hacker Button
+        # HACKER BUTTON
         self.btn_hack = QPushButton("🔴 SIMULATE ATTACK")
         self.btn_hack.setCheckable(True)
         self.btn_hack.setStyleSheet("background-color: #550000; color: white; border: 1px solid red;")
         self.btn_hack.clicked.connect(self.toggle_attack)
         left_layout.addWidget(self.btn_hack)
 
-        # 4. Dashboard
+        # DASHBOARD
         status_widget = QWidget()
         status_widget.setStyleSheet("background-color: #2d2d2d; border-radius: 5px; padding: 5px; margin-top: 10px;")
         status_layout = QVBoxLayout(status_widget)
@@ -67,7 +64,7 @@ class QuMailClient(QMainWindow):
         # --- RIGHT PANE ---
         self.right_pane = QStackedWidget()
         
-        # VIEW 0: READ
+        # View 0: Read
         self.read_view = QWidget()
         read_layout = QVBoxLayout(self.read_view)
         self.lbl_subject = QLabel("<h2>Select an email</h2>")
@@ -80,21 +77,18 @@ class QuMailClient(QMainWindow):
         self.btn_download = QPushButton("💾 Download Attachment")
         self.btn_download.clicked.connect(self.download_attachment)
         self.btn_download.hide()
-        
         read_layout.addWidget(self.lbl_subject)
         read_layout.addWidget(self.lbl_sender)
         read_layout.addWidget(self.txt_body)
         read_layout.addWidget(self.btn_decrypt)
         read_layout.addWidget(self.btn_download)
         
-        # VIEW 1: COMPOSE
+        # View 1: Compose
         self.compose_view = QWidget()
         compose_layout = QVBoxLayout(self.compose_view)
-        
         self.input_ip = QLineEdit()
         self.input_ip.setPlaceholderText("Target IP (e.g., 192.168.1.5)")
         self.input_ip.setStyleSheet("border: 1px solid #0e639c;")
-        
         self.input_to = QLineEdit()
         self.input_to.setPlaceholderText("To: bob@quantum.com")
         self.input_subject = QLineEdit()
@@ -112,7 +106,7 @@ class QuMailClient(QMainWindow):
         self.btn_send = QPushButton("🚀 Beam to Target PC")
         self.btn_send.clicked.connect(self.send_email)
         
-        compose_layout.addWidget(QLabel("Target IP Address (Bob's PC):"))
+        compose_layout.addWidget(QLabel("Target IP Address:"))
         compose_layout.addWidget(self.input_ip)
         compose_layout.addWidget(self.input_to)
         compose_layout.addWidget(self.input_subject)
@@ -131,55 +125,62 @@ class QuMailClient(QMainWindow):
         
         # INIT
         db.init_db()
-        network.start_server(self.trigger_refresh) # Pass the refresh function!
+        # UPDATED: Pass both the refresh function AND the attack checker
+        network.start_server(self.trigger_refresh, self.check_attack_status)
         self.current_user = self.input_identity.text()
         self.current_folder = "inbox"
         self.current_attachment_path = None
         self.apply_dark_theme()
         self.load_emails()
 
-    # --- LOGIC ---
+    # --- NEW LOGIC FOR ATTACKS ---
+
+    def check_attack_status(self):
+        """Returns True if the red Hacker button is ON"""
+        return self.btn_hack.isChecked()
+
+    def trigger_refresh(self, security_alert=False):
+        """Called by network when mail arrives OR is destroyed."""
+        if security_alert:
+            # Show the "Destroyed" Alert
+            QTimer.singleShot(0, self.show_destruction_alert)
+        else:
+            # Normal Email Arrival
+            print("📩 New Mail! Refreshing UI...")
+            QTimer.singleShot(0, self.load_emails)
+
+    def show_destruction_alert(self):
+        QMessageBox.critical(self, "🛑 SECURITY INTERVENTION", 
+                             "Eavesdropper (Eve) Detected!\n\n"
+                             "The system detected an interception attempt.\n"
+                             "The incoming message has been DESTROYED to protect the data.")
+
+    # --- EXISTING LOGIC ---
 
     def update_identity(self):
-        """Updates who I am when I type in the top box"""
         self.current_user = self.input_identity.text()
-        self.load_emails() # Reload inbox for the new user name
-
-    def trigger_refresh(self):
-        """Called by network when new mail arrives"""
-        print("📩 New Mail! Refreshing UI...")
-        # Since this is called from a thread, we use a Timer to update GUI safely
-        QTimer.singleShot(0, self.load_emails)
+        self.load_emails()
 
     def send_email(self):
         target_ip = self.input_ip.text().strip()
         receiver = self.input_to.text().strip()
         subject = self.input_subject.text().strip()
         body = self.input_body.toPlainText().strip()
-        
         if not target_ip or not receiver:
             QMessageBox.warning(self, "Missing Info", "Please enter Target IP and Receiver!")
             return
-
         try:
             key_id, key = crypto.generate_quantum_key()
             encrypted_body = crypto.encrypt_content(body, key)
-            
             filename = None
             encrypted_file = None
-            raw_bytes = None
             if self.current_attachment_path:
                 filename = self.current_attachment_path.split("/")[-1]
                 with open(self.current_attachment_path, "rb") as f:
-                    raw_bytes = f.read()
-                encrypted_file = crypto.encrypt_file_bytes(raw_bytes, key)
+                    encrypted_file = crypto.encrypt_file_bytes(f.read(), key)
 
             db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
-
-            success, msg = network.send_p2p_email(
-                target_ip, self.current_user, receiver, subject, 
-                encrypted_body, key_id, key.decode(), filename, encrypted_file
-            )
+            success, msg = network.send_p2p_email(target_ip, self.current_user, receiver, subject, encrypted_body, key_id, key.decode(), filename, encrypted_file)
 
             if success:
                 QMessageBox.information(self, "Sent", f"Message Beamed to {target_ip}!")
@@ -187,7 +188,6 @@ class QuMailClient(QMainWindow):
                 self.nav_list.setCurrentRow(2) 
             else:
                 QMessageBox.critical(self, "Failed", f"Connection Error:\n{msg}")
-
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
