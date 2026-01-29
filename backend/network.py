@@ -6,60 +6,66 @@ from . import db
 # Port to listen on (Arbitrary, but must match on both PCs)
 PORT = 5005 
 
-def start_server(update_callback):
+def start_server(update_callback=None):
     """
     Bob runs this to listen for incoming emails.
-    update_callback: A function to refresh the UI when mail arrives.
+    update_callback: Optional function to refresh UI when mail arrives.
     """
     def listener():
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # 0.0.0.0 means "Listen to everyone on the Wi-Fi"
-        server_socket.bind(('0.0.0.0', PORT)) 
-        server_socket.listen(5)
-        print(f"👂 Listening for Quantum Mail on Port {PORT}...")
-        
-        while True:
-            client, addr = server_socket.accept()
-            print(f"📡 Connection from {addr}")
+        try:
+            server_socket.bind(('0.0.0.0', PORT)) 
+            server_socket.listen(5)
+            print(f"👂 Listening for Quantum Mail on Port {PORT}...")
             
-            try:
-                # 1. Receive Data (up to 10MB buffer for attachments)
-                data = b""
-                while True:
-                    packet = client.recv(4096)
-                    if not packet: break
-                    data += packet
+            while True:
+                client, addr = server_socket.accept()
+                print(f"📡 Connection from {addr}")
                 
-                # 2. Parse JSON
-                email_data = json.loads(data.decode('utf-8'))
-                
-                # 3. Save to Local DB (Bob's DB)
-                # Note: We convert file_blob back to bytes if it exists
-                file_blob = bytes.fromhex(email_data['file_hex']) if email_data.get('file_hex') else None
-                
-                db.save_email(
-                    sender=email_data['sender'],
-                    receiver=email_data['receiver'],
-                    subject=email_data['subject'],
-                    ciphertext=email_data['body'],
-                    key_id=email_data['key_id'],
-                    filename=email_data.get('filename'),
-                    file_data=file_blob
-                )
-                
-                # 4. Save the Key (Simulating QKD Hardware Sync)
-                db.store_key(email_data['key_id'], email_data['key_value'])
-                
-                # 5. Tell UI to refresh
-                if update_callback:
-                    update_callback()
+                try:
+                    # 1. Receive Data
+                    data = b""
+                    while True:
+                        packet = client.recv(4096)
+                        if not packet: break
+                        data += packet
                     
-            except Exception as e:
-                print(f"❌ Network Error: {e}")
-            finally:
-                client.close()
+                    # 2. Parse JSON
+                    email_data = json.loads(data.decode('utf-8'))
+                    
+                    # 3. Handle File Blob (Convert hex back to bytes)
+                    file_blob = None
+                    if email_data.get('file_hex'):
+                        file_blob = bytes.fromhex(email_data['file_hex'])
+                    
+                    # 4. Save to Local DB
+                    db.save_email(
+                        sender=email_data['sender'],
+                        receiver=email_data['receiver'],
+                        subject=email_data['subject'],
+                        ciphertext=email_data['body'],
+                        key_id=email_data['key_id'],
+                        filename=email_data.get('filename'),
+                        file_data=file_blob
+                    )
+                    
+                    # 5. Save the Key (Sync)
+                    db.store_key(email_data['key_id'], email_data['key_value'])
+                    print("✅ Email received and saved to DB.")
 
-    # Run listener in background so UI doesn't freeze
+                    # 6. Refresh UI if callback is provided
+                    if update_callback:
+                        update_callback()
+                        
+                except Exception as e:
+                    print(f"❌ Network Error: {e}")
+                finally:
+                    client.close()
+        except Exception as e:
+            print(f"⚠️ Could not bind port {PORT}: {e}")
+
+    # Run listener in background
     t = threading.Thread(target=listener, daemon=True)
     t.start()
 
@@ -73,7 +79,7 @@ def send_p2p_email(target_ip, sender, receiver, subject, ciphertext, key_id, key
             "subject": subject,
             "body": ciphertext,
             "key_id": key_id,
-            "key_value": key_value, # Sending key mostly for demo sync
+            "key_value": key_value,
             "filename": filename,
             "file_hex": file_bytes.hex() if file_bytes else None
         }
