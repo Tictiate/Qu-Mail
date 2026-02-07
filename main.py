@@ -8,8 +8,8 @@ from PyQt6.QtCore import Qt, QTimer
 from backend import db, crypto, network, smtp_client
 
 class QuMailClient(QMainWindow):
-    def _init_(self):
-        super()._init_()
+    def __init__(self):
+        super().__init__()
         self.setWindowTitle("QuMail - Quantum Secure Client")
         self.resize(1200, 750)
         
@@ -187,26 +187,33 @@ class QuMailClient(QMainWindow):
 
     def run_manual_decryption(self):
         """Decrypts text pasted from external sources (Gmail)"""
-        ciphertext = self.input_dt_cipher.toPlainText().strip()
-        key_str = self.input_dt_key.text().strip()
+        # 1. Get Text
+        raw_cipher = self.input_dt_cipher.toPlainText()
+        raw_key = self.input_dt_key.text()
+        
+        # 2. Aggressive Cleaning (The Fix)
+        # Gmail adds newlines every 70 characters. We must remove them.
+        ciphertext = raw_cipher.replace(" ", "").replace("\n", "").replace("\r", "").strip()
+        key_str = raw_key.strip()
         
         if not ciphertext or not key_str:
             QMessageBox.warning(self, "Missing Data", "Please paste both the Ciphertext and the Key!")
             return
             
-        # Try to decrypt
-        try:
-            # We use the crypto module directly
-            # Note: The key in the email is a string, we need to treat it as bytes for Fernet
-            plaintext = crypto.decrypt_content(ciphertext, key_str)
-            
-            if "❌" in plaintext:
-                self.output_dt_plain.setText("DECRYPTION FAILED: Invalid Key or Corrupted Data.")
-            else:
-                self.output_dt_plain.setText(plaintext)
-                QMessageBox.information(self, "Success", "Message Decrypted Successfully!")
-        except Exception as e:
-            self.output_dt_plain.setText(f"Error: {str(e)}")
+        # 3. Debug Print (Look at your Terminal if it fails!)
+        print(f"DEBUG: Attempting decrypt with Key: {key_str[:10]}...")
+        
+        # 4. Try Decrypt
+        plaintext = crypto.decrypt_content(ciphertext, key_str)
+        
+        if "❌" in plaintext:
+            # Show the actual python error in the box so we know WHY it failed
+            self.output_dt_plain.setText(f"FAILED. System Error:\n{plaintext}")
+            self.output_dt_plain.setStyleSheet("border: 1px solid red; color: red;")
+        else:
+            self.output_dt_plain.setText(plaintext)
+            self.output_dt_plain.setStyleSheet("border: 1px solid #00ff00; color: #00ff00;")
+            QMessageBox.information(self, "Success", "Message Decrypted Successfully!")
 
     def toggle_compose_mode(self):
         if self.radio_p2p.isChecked():
@@ -418,7 +425,7 @@ QUANTUM KEY (Copy this):
             QSplitter::handle { background-color: #444; }
         """)
 
-if __name__ == "_main_":
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = QuMailClient()
     window.show()

@@ -41,5 +41,10 @@ def get_key(key_id):
     return result[0] if result else None
 
 def store_key(key_id, key_value):
-    c.execute("INSERT INTO quantum_keys (key_id, key_value) VALUES (?, ?)", (key_id, key_value))
+    conn = sqlite3.connect('qumail.db')
+    c = conn.cursor()
+    
+    c.execute("INSERT OR IGNORE INTO quantum_keys (key_id, key_value) VALUES (?, ?)", (key_id, key_value))
+    
     conn.commit()
+    conn.close()
