@@ -3,48 +3,46 @@ import random
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QListWidget, QTextEdit, QLabel, 
                              QPushButton, QSplitter, QLineEdit, QMessageBox, 
-                             QStackedWidget, QFileDialog, QProgressBar)
+                             QStackedWidget, QFileDialog, QProgressBar, QRadioButton, QGroupBox)
 from PyQt6.QtCore import Qt, QTimer
-from backend import db, crypto, network
+from backend import db, crypto, network, smtp_client
 
 class QuMailClient(QMainWindow):
-    def __init__(self):
-        super().__init__()
+    def _init_(self):
+        super()._init_()
         self.setWindowTitle("QuMail - Quantum Secure Client")
-        self.resize(1200, 700)
+        self.resize(1200, 750)
         
-        # --- 1. THE LAYOUT ---
+        # --- LAYOUT SETUP ---
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
-        
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # --- LEFT PANE (Navigation) ---
+        # --- LEFT PANE ---
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         
-        # 1. IDENTITY BOX (New!)
         left_layout.addWidget(QLabel("👤 My Identity:"))
         self.input_identity = QLineEdit()
-        self.input_identity.setText("alice@quantum.com") # Default
+        self.input_identity.setText("alice@quantum.com") 
         self.input_identity.textChanged.connect(self.update_identity)
         left_layout.addWidget(self.input_identity)
         
-        # 2. Navigation List
         self.nav_list = QListWidget()
-        self.nav_list.addItems(["📥 Inbox", "✍️ Compose", "📤 Sent"])
+        # Added "Decrypt Tool" to the list
+        self.nav_list.addItems(["📥 Inbox", "✍️ Compose", "📤 Sent", "🔓 Decrypt Tool"])
         self.nav_list.currentRowChanged.connect(self.switch_mode)
         left_layout.addWidget(self.nav_list)
 
-        # 3. Hacker Button
+        # HACKER BUTTON
         self.btn_hack = QPushButton("🔴 SIMULATE ATTACK")
         self.btn_hack.setCheckable(True)
         self.btn_hack.setStyleSheet("background-color: #550000; color: white; border: 1px solid red;")
         self.btn_hack.clicked.connect(self.toggle_attack)
         left_layout.addWidget(self.btn_hack)
 
-        # 4. Dashboard
+        # DASHBOARD
         status_widget = QWidget()
         status_widget.setStyleSheet("background-color: #2d2d2d; border-radius: 5px; padding: 5px; margin-top: 10px;")
         status_layout = QVBoxLayout(status_widget)
@@ -80,7 +78,6 @@ class QuMailClient(QMainWindow):
         self.btn_download = QPushButton("💾 Download Attachment")
         self.btn_download.clicked.connect(self.download_attachment)
         self.btn_download.hide()
-        
         read_layout.addWidget(self.lbl_subject)
         read_layout.addWidget(self.lbl_sender)
         read_layout.addWidget(self.txt_body)
@@ -91,9 +88,24 @@ class QuMailClient(QMainWindow):
         self.compose_view = QWidget()
         compose_layout = QVBoxLayout(self.compose_view)
         
+        mode_layout = QHBoxLayout()
+        self.radio_p2p = QRadioButton("📡 Quantum Direct (P2P)")
+        self.radio_gmail = QRadioButton("📧 Standard Gmail")
+        self.radio_p2p.setChecked(True)
+        self.radio_p2p.toggled.connect(self.toggle_compose_mode)
+        mode_layout.addWidget(self.radio_p2p)
+        mode_layout.addWidget(self.radio_gmail)
+        mode_layout.addStretch()
+        compose_layout.addLayout(mode_layout)
+
         self.input_ip = QLineEdit()
         self.input_ip.setPlaceholderText("Target IP (e.g., 192.168.1.5)")
         self.input_ip.setStyleSheet("border: 1px solid #0e639c;")
+        
+        self.input_password = QLineEdit()
+        self.input_password.setPlaceholderText("Gmail App Password")
+        self.input_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.input_password.hide() 
         
         self.input_to = QLineEdit()
         self.input_to.setPlaceholderText("To: bob@quantum.com")
@@ -112,16 +124,48 @@ class QuMailClient(QMainWindow):
         self.btn_send = QPushButton("🚀 Beam to Target PC")
         self.btn_send.clicked.connect(self.send_email)
         
-        compose_layout.addWidget(QLabel("Target IP Address (Bob's PC):"))
         compose_layout.addWidget(self.input_ip)
+        compose_layout.addWidget(self.input_password)
         compose_layout.addWidget(self.input_to)
         compose_layout.addWidget(self.input_subject)
         compose_layout.addWidget(self.input_body)
         compose_layout.addLayout(attach_layout)
         compose_layout.addWidget(self.btn_send)
         
-        self.right_pane.addWidget(self.read_view)
-        self.right_pane.addWidget(self.compose_view)
+        # VIEW 2: MANUAL DECRYPT TOOL (NEW!)
+        self.decrypt_tool_view = QWidget()
+        dt_layout = QVBoxLayout(self.decrypt_tool_view)
+        
+        dt_layout.addWidget(QLabel("<h2>🔓 External Decryption Tool</h2>"))
+        dt_layout.addWidget(QLabel("Paste the encrypted text and key from your Gmail here."))
+        
+        self.input_dt_cipher = QTextEdit()
+        self.input_dt_cipher.setPlaceholderText("Paste Ciphertext (The garbage text) here...")
+        
+        self.input_dt_key = QLineEdit()
+        self.input_dt_key.setPlaceholderText("Paste Quantum Key here...")
+        
+        self.btn_manual_decrypt = QPushButton("🔓 Decrypt Message")
+        self.btn_manual_decrypt.clicked.connect(self.run_manual_decryption)
+        self.btn_manual_decrypt.setStyleSheet("background-color: #0e639c; height: 40px; font-weight: bold;")
+        
+        self.output_dt_plain = QTextEdit()
+        self.output_dt_plain.setPlaceholderText("Decrypted message will appear here...")
+        self.output_dt_plain.setReadOnly(True)
+        self.output_dt_plain.setStyleSheet("border: 1px solid #00ff00; color: #00ff00;")
+        
+        dt_layout.addWidget(QLabel("1. Ciphertext:"))
+        dt_layout.addWidget(self.input_dt_cipher)
+        dt_layout.addWidget(QLabel("2. Quantum Key:"))
+        dt_layout.addWidget(self.input_dt_key)
+        dt_layout.addWidget(self.btn_manual_decrypt)
+        dt_layout.addWidget(QLabel("3. Result:"))
+        dt_layout.addWidget(self.output_dt_plain)
+
+        # Add views to Stack
+        self.right_pane.addWidget(self.read_view)        # Index 0
+        self.right_pane.addWidget(self.compose_view)     # Index 1
+        self.right_pane.addWidget(self.decrypt_tool_view) # Index 2
         
         self.splitter.addWidget(left_widget)
         self.splitter.addWidget(self.email_list)
@@ -129,9 +173,10 @@ class QuMailClient(QMainWindow):
         self.splitter.setSizes([250, 300, 650])
         main_layout.addWidget(self.splitter)
         
-        # INIT
+        # --- INITIALIZATION ---
         db.init_db()
-        network.start_server(self.trigger_refresh) # Pass the refresh function!
+        network.start_server(self.trigger_refresh, self.check_attack_status)
+        
         self.current_user = self.input_identity.text()
         self.current_folder = "inbox"
         self.current_attachment_path = None
@@ -140,56 +185,134 @@ class QuMailClient(QMainWindow):
 
     # --- LOGIC ---
 
-    def update_identity(self):
-        """Updates who I am when I type in the top box"""
-        self.current_user = self.input_identity.text()
-        self.load_emails() # Reload inbox for the new user name
+    def run_manual_decryption(self):
+        """Decrypts text pasted from external sources (Gmail)"""
+        ciphertext = self.input_dt_cipher.toPlainText().strip()
+        key_str = self.input_dt_key.text().strip()
+        
+        if not ciphertext or not key_str:
+            QMessageBox.warning(self, "Missing Data", "Please paste both the Ciphertext and the Key!")
+            return
+            
+        # Try to decrypt
+        try:
+            # We use the crypto module directly
+            # Note: The key in the email is a string, we need to treat it as bytes for Fernet
+            plaintext = crypto.decrypt_content(ciphertext, key_str)
+            
+            if "❌" in plaintext:
+                self.output_dt_plain.setText("DECRYPTION FAILED: Invalid Key or Corrupted Data.")
+            else:
+                self.output_dt_plain.setText(plaintext)
+                QMessageBox.information(self, "Success", "Message Decrypted Successfully!")
+        except Exception as e:
+            self.output_dt_plain.setText(f"Error: {str(e)}")
 
-    def trigger_refresh(self):
-        """Called by network when new mail arrives"""
-        print("📩 New Mail! Refreshing UI...")
-        # Since this is called from a thread, we use a Timer to update GUI safely
-        QTimer.singleShot(0, self.load_emails)
+    def toggle_compose_mode(self):
+        if self.radio_p2p.isChecked():
+            self.input_ip.show()
+            self.input_password.hide()
+            self.btn_send.setText("🚀 Beam to Target PC")
+            self.input_ip.setPlaceholderText("Target IP (e.g., 192.168.1.5)")
+        else:
+            self.input_ip.hide()
+            self.input_password.show()
+            self.btn_send.setText("✉️ Send Encrypted Gmail")
+
+    def check_attack_status(self):
+        return self.btn_hack.isChecked()
+
+    def trigger_refresh(self, security_alert=False):
+        if security_alert:
+            QTimer.singleShot(0, self.show_destruction_alert)
+        else:
+            print("📩 New Mail! Refreshing UI...")
+            QTimer.singleShot(0, self.load_emails)
+
+    def show_destruction_alert(self):
+        QMessageBox.critical(self, "🛑 SECURITY INTERVENTION", 
+                             "Eavesdropper (Eve) Detected!\n\n"
+                             "The message was DESTROYED in transit.")
+
+    def update_identity(self):
+        self.current_user = self.input_identity.text()
+        self.load_emails()
 
     def send_email(self):
-        target_ip = self.input_ip.text().strip()
         receiver = self.input_to.text().strip()
         subject = self.input_subject.text().strip()
         body = self.input_body.toPlainText().strip()
         
-        if not target_ip or not receiver:
-            QMessageBox.warning(self, "Missing Info", "Please enter Target IP and Receiver!")
-            return
+        # --- 1. ENCRYPTION ---
+        key_id, key = crypto.generate_quantum_key()
+        encrypted_body = crypto.encrypt_content(body, key)
+        
+        # Save Key locally for the sender
+        db.store_key(key_id, key.decode()) 
+        
+        encrypted_file = None
+        filename = None
+        if self.current_attachment_path:
+            filename = self.current_attachment_path.split("/")[-1]
+            with open(self.current_attachment_path, "rb") as f:
+                encrypted_file = crypto.encrypt_file_bytes(f.read(), key)
 
-        try:
-            key_id, key = crypto.generate_quantum_key()
-            encrypted_body = crypto.encrypt_content(body, key)
+        # MODE 1: P2P
+        if self.radio_p2p.isChecked():
+            target_ip = self.input_ip.text().strip()
+            if not target_ip or not receiver:
+                QMessageBox.warning(self, "Missing Info", "Please enter Target IP and Receiver!")
+                return
             
-            filename = None
-            encrypted_file = None
-            raw_bytes = None
-            if self.current_attachment_path:
-                filename = self.current_attachment_path.split("/")[-1]
-                with open(self.current_attachment_path, "rb") as f:
-                    raw_bytes = f.read()
-                encrypted_file = crypto.encrypt_file_bytes(raw_bytes, key)
+            try:
+                db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
+                success, msg = network.send_p2p_email(target_ip, self.current_user, receiver, subject, encrypted_body, key_id, key.decode(), filename, encrypted_file)
 
-            db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
+                if success:
+                    QMessageBox.information(self, "Sent", f"Message Beamed to {target_ip}!")
+                    self.input_body.clear()
+                    self.nav_list.setCurrentRow(2) 
+                else:
+                    QMessageBox.critical(self, "Failed", f"Connection Error:\n{msg}")
 
-            success, msg = network.send_p2p_email(
-                target_ip, self.current_user, receiver, subject, 
-                encrypted_body, key_id, key.decode(), filename, encrypted_file
+            except Exception as e:
+                QMessageBox.critical(self, "Error", str(e))
+        
+        # MODE 2: GMAIL
+        else:
+            sender_password = self.input_password.text().strip()
+            if not sender_password:
+                QMessageBox.warning(self, "Missing Password", "Please enter Gmail App Password!")
+                return
+
+            email_content = f"""
+🔒 QUANTUM SECURE MESSAGE 🔒
+------------------------------------------------
+This email was encrypted using the QuMail Protocol.
+
+CIPHERTEXT:
+{encrypted_body}
+
+------------------------------------------------
+QUANTUM KEY (Copy this):
+{key.decode()}
+            """
+
+            success, msg = smtp_client.send_gmail(
+                self.current_user, 
+                sender_password, 
+                receiver, 
+                subject, 
+                email_content, 
+                self.current_attachment_path 
             )
-
+            
             if success:
-                QMessageBox.information(self, "Sent", f"Message Beamed to {target_ip}!")
-                self.input_body.clear()
-                self.nav_list.setCurrentRow(2) 
+                QMessageBox.information(self, "Success", "Encrypted Email sent via Gmail!")
+                db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
+                self.nav_list.setCurrentRow(2)
             else:
-                QMessageBox.critical(self, "Failed", f"Connection Error:\n{msg}")
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", str(e))
+                QMessageBox.critical(self, "Gmail Error", f"Could not send:\n{msg}")
 
     def update_status(self):
         noise = random.uniform(0.1, 1.5)
@@ -204,11 +327,12 @@ class QuMailClient(QMainWindow):
     def toggle_attack(self):
         if self.btn_hack.isChecked():
             self.btn_hack.setText("⚠️ ATTACK ACTIVE")
-            QMessageBox.warning(self, "INTERCEPTION STARTED", "Quantum Channel Compromised!")
+            QMessageBox.warning(self, "INTERCEPTION STARTED", "Channel Compromised!")
         else:
             self.btn_hack.setText("🔴 SIMULATE ATTACK")
 
     def switch_mode(self, index):
+        # 0=Inbox, 1=Compose, 2=Sent, 3=Decrypt Tool
         if index == 0:
             self.current_folder = "inbox"
             self.right_pane.setCurrentIndex(0)
@@ -219,6 +343,9 @@ class QuMailClient(QMainWindow):
             self.current_folder = "sent"
             self.right_pane.setCurrentIndex(0)
             self.load_emails()
+        elif index == 3:
+            # Show the Decrypt Tool
+            self.right_pane.setCurrentIndex(2)
 
     def load_emails(self):
         self.email_list.clear()
@@ -291,7 +418,7 @@ class QuMailClient(QMainWindow):
             QSplitter::handle { background-color: #444; }
         """)
 
-if __name__ == "__main__":
+if __name__ == "_main_":
     app = QApplication(sys.argv)
     window = QuMailClient()
     window.show()
