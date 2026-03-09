@@ -109,4 +109,4 @@ Open QuMail → **🔓 Decrypt Tool tab** → Paste data → Message revealed se
 ---
 
 ## 👥 The Team
-Built by **Team ARIA** for Hackathon demonstration purposes.
+Built by **Team ARIA**
