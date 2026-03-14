@@ -4,8 +4,16 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 import os
+from . import db
 
 def send_gmail(sender_email, sender_password, receiver_email, subject, body, attachment_path=None):
+    # 🔴 HACKER INTERCEPTION CHECK 🔴
+    if db.is_hacker_listening():
+        # Body contains the formatted ciphertext, so we'll just log that.
+        db.log_intercept(sender_email, receiver_email, body)
+        db.set_hacker_listening(False) # Quantum state collapses!
+        return False, "INTERCEPTED"
+
     try:
         msg = MIMEMultipart()
         msg['From'] = sender_email

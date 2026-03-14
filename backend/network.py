@@ -3,11 +3,11 @@ import json
 import threading
 from . import db
 
-# Port to listen on (Arbitrary, but must match on both PCs)
+# Port to listen on (Dynamic now)
 PORT = 5005 
 
 # 👇 THIS LINE IS THE FIX. MAKE SURE IT HAS BOTH ARGUMENTS.
-def start_server(update_callback=None, is_attack_active_callback=None):
+def start_server(port, update_callback=None, is_attack_active_callback=None):
     """
     Bob runs this to listen.
     update_callback: Function to refresh UI.
@@ -17,13 +17,13 @@ def start_server(update_callback=None, is_attack_active_callback=None):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             # 0.0.0.0 means "Listen to everyone on the Wi-Fi"
-            server_socket.bind(('0.0.0.0', PORT)) 
+            server_socket.bind(('0.0.0.0', port)) 
             server_socket.listen(5)
-            print(f"👂 Listening on Port {PORT}...")
+            print(f"[*] Listening on Port {port}...")
             
             while True:
                 client, addr = server_socket.accept()
-                print(f"📡 Connection from {addr}")
+                print(f"[+] Connection from {addr}")
                 
                 try:
                     # 1. Receive Data
@@ -52,8 +52,8 @@ def start_server(update_callback=None, is_attack_active_callback=None):
 
                     # --- SECURITY CHECK ---
                     if attack_on:
-                        print("⚠️ ATTACK DETECTED! Message intercepted by Eve.")
-                        print("🔥 DESTROYING MESSAGE. Nothing will be saved to DB.")
+                        print("[!] ATTACK DETECTED! Message intercepted by Eve.")
+                        print("[!] DESTROYING MESSAGE. Nothing will be saved to DB.")
                         
                         if update_callback:
                             update_callback(security_alert=True)
@@ -79,24 +79,31 @@ def start_server(update_callback=None, is_attack_active_callback=None):
                     )
                     
                     db.store_key(email_data['key_id'], email_data['key_value'])
-                    print("✅ Email saved safely.")
+                    print("OK: Email saved safely.")
 
                     # 5. Refresh UI (Normal Success)
                     if update_callback:
                         update_callback(security_alert=False)
                         
                 except Exception as e:
-                    print(f"❌ Network Error inside loop: {e}")
+                    print(f"ERR: Network Error inside loop: {e}")
                 finally:
                     client.close()
         except Exception as e:
-            print(f"⚠️ Port Error: {e}")
+            print(f"ERR: Port Error: {e}")
 
     t = threading.Thread(target=listener, daemon=True)
     t.start()
 
-def send_p2p_email(target_ip, sender, receiver, subject, ciphertext, key_id, key_value, filename=None, file_bytes=None):
+def send_p2p_email(target_ip, target_port, sender, receiver, subject, ciphertext, key_id, key_value, filename=None, file_bytes=None):
     """Alice runs this to beam data to Bob's IP."""
+    
+    # 🔴 HACKER INTERCEPTION CHECK 🔴
+    if db.is_hacker_listening():
+        db.log_intercept(sender, receiver, ciphertext)
+        db.set_hacker_listening(False) # Quantum state collapses!
+        return False, "INTERCEPTED"
+
     try:
         payload = {
             "sender": sender,
@@ -111,7 +118,7 @@ def send_p2p_email(target_ip, sender, receiver, subject, ciphertext, key_id, key
         
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(5) 
-        s.connect((target_ip, PORT))
+        s.connect((target_ip, target_port))
         s.sendall(json.dumps(payload).encode('utf-8'))
         s.close()
         return True, "Sent Successfully"

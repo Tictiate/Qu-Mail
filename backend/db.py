@@ -13,6 +13,18 @@ def init_db():
     # Table for Keys (Simulating Hardware)
     c.execute('''CREATE TABLE IF NOT EXISTS quantum_keys 
                  (key_id TEXT PRIMARY KEY, key_value TEXT)''')
+                 
+    # Simulation State Table (Alice, Bob, Hacker shared state)
+    c.execute('''CREATE TABLE IF NOT EXISTS simulation_state
+                 (key TEXT PRIMARY KEY, value TEXT)''')
+                 
+    # Initialize Hacker state if it doesn't exist
+    c.execute('''INSERT OR IGNORE INTO simulation_state (key, value) VALUES ('hacker_listening', '0')''')
+    
+    # Hacker Logs Table
+    c.execute('''CREATE TABLE IF NOT EXISTS hacker_logs
+                 (id INTEGER PRIMARY KEY, timestamp TEXT, sender TEXT, receiver TEXT, intercepted_data TEXT)''')
+                 
     conn.commit()
     return conn
 
@@ -48,3 +60,38 @@ def store_key(key_id, key_value):
     
     conn.commit()
     conn.close()
+
+# --- HACKER SIMULATION FUNCTIONS ---
+
+def set_hacker_listening(is_listening: bool):
+    conn = sqlite3.connect('qumail.db', check_same_thread=False)
+    c = conn.cursor()
+    val = "1" if is_listening else "0"
+    c.execute("UPDATE simulation_state SET value = ? WHERE key = 'hacker_listening'", (val,))
+    conn.commit()
+    conn.close()
+
+def is_hacker_listening() -> bool:
+    conn = sqlite3.connect('qumail.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute("SELECT value FROM simulation_state WHERE key = 'hacker_listening'")
+    result = c.fetchone()
+    conn.close()
+    return result[0] == "1" if result else False
+
+def log_intercept(sender, receiver, data):
+    conn = sqlite3.connect('qumail.db', check_same_thread=False)
+    c = conn.cursor()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("INSERT INTO hacker_logs (timestamp, sender, receiver, intercepted_data) VALUES (?, ?, ?, ?)",
+              (timestamp, sender, receiver, data))
+    conn.commit()
+    conn.close()
+
+def get_hacker_logs():
+    conn = sqlite3.connect('qumail.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute("SELECT * FROM hacker_logs ORDER BY id DESC")
+    results = c.fetchall()
+    conn.close()
+    return results
