@@ -3,14 +3,58 @@ import random
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QListWidget, QTextEdit, QLabel, 
                              QPushButton, QSplitter, QLineEdit, QMessageBox, 
-                             QStackedWidget, QFileDialog, QProgressBar, QRadioButton, QGroupBox)
+                             QStackedWidget, QFileDialog, QProgressBar, QRadioButton, QGroupBox, QInputDialog, QDialog, QFormLayout, QDialogButtonBox, QHeaderView, QTableWidget, QTableWidgetItem)
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QIcon, QColor
 from backend import db, crypto, network, smtp_client
 
-class QuMailClient(QMainWindow):
+# -- IDENTITY CONFIGURATION --
+IDENTITIES = {
+    "alice@quantum.com": {"port": 5001, "role": "user", "name": "Alice"},
+    "bob@quantum.com": {"port": 5002, "role": "user", "name": "Bob"},
+    "hacker@darknet.io": {"port": 5003, "role": "hacker", "name": "Eve (Hacker)"}
+}
+
+class IdentitySelector(QDialog):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("QuMail - Quantum Secure Client")
+        self.setWindowTitle("Select Identity")
+        self.setFixedSize(300, 200)
+        self.selected_identity = None
+
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("<h2>Who are you?</h2>"))
+
+        self.btn_alice = QPushButton("Login as Alice")
+        self.btn_alice.setStyleSheet("background-color: #0078D7; color: white; padding: 10px; font-weight: bold;")
+        self.btn_alice.clicked.connect(lambda: self.select("alice@quantum.com"))
+        
+        self.btn_bob = QPushButton("Login as Bob")
+        self.btn_bob.setStyleSheet("background-color: #28A745; color: white; padding: 10px; font-weight: bold;")
+        self.btn_bob.clicked.connect(lambda: self.select("bob@quantum.com"))
+
+        self.btn_hacker = QPushButton("Login as Hacker (Eve)")
+        self.btn_hacker.setStyleSheet("background-color: #DC3545; color: white; padding: 10px; font-weight: bold;")
+        self.btn_hacker.clicked.connect(lambda: self.select("hacker@darknet.io"))
+
+        layout.addWidget(self.btn_alice)
+        layout.addWidget(self.btn_bob)
+        layout.addWidget(self.btn_hacker)
+
+        self.setLayout(layout)
+
+    def select(self, email):
+        self.selected_identity = email
+        self.accept()
+
+class QuMailClient(QMainWindow):
+    def __init__(self, identity_email):
+        super().__init__()
+        self.current_user = identity_email
+        self.identity_config = IDENTITIES[self.current_user]
+        self.is_hacker = self.identity_config["role"] == "hacker"
+        
+        self.setWindowTitle(f"QuMail - {self.identity_config['name']} ({self.identity_config['port']})")
         self.resize(1200, 750)
         
         # --- LAYOUT SETUP ---
@@ -23,36 +67,37 @@ class QuMailClient(QMainWindow):
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         
-        left_layout.addWidget(QLabel("👤 My Identity:"))
-        self.input_identity = QLineEdit()
-        self.input_identity.setText("alice@quantum.com") 
-        self.input_identity.textChanged.connect(self.update_identity)
-        left_layout.addWidget(self.input_identity)
+        lbl_identity = QLabel(f"👤 {self.identity_config['name']}")
+        lbl_identity.setStyleSheet("font-size: 18px; font-weight: bold; color: #00ff00;")
+        left_layout.addWidget(lbl_identity)
+        left_layout.addWidget(QLabel(f"Email: {self.current_user}"))
+        left_layout.addWidget(QLabel(f"Port: {self.identity_config['port']}"))
+        left_layout.addSpacing(20)
         
         self.nav_list = QListWidget()
-        # Added "Decrypt Tool" to the list
-        self.nav_list.addItems(["📥 Inbox", "✍️ Compose", "📤 Sent", "🔓 Decrypt Tool"])
-        self.nav_list.currentRowChanged.connect(self.switch_mode)
-        left_layout.addWidget(self.nav_list)
+        if not self.is_hacker:
+            self.nav_list.addItems(["📥 Inbox", "✍️ Compose", "📤 Sent", "🔓 Decrypt Tool"])
+            self.nav_list.currentRowChanged.connect(self.switch_mode)
+            left_layout.addWidget(self.nav_list)
+        else:
+            self.nav_list.addItems(["🕵️ Intercept Dashboard"])
+            self.nav_list.currentRowChanged.connect(self.switch_mode)
+            left_layout.addWidget(self.nav_list)
 
-        # HACKER BUTTON
-        self.btn_hack = QPushButton("🔴 SIMULATE ATTACK")
-        self.btn_hack.setCheckable(True)
-        self.btn_hack.setStyleSheet("background-color: #550000; color: white; border: 1px solid red;")
-        self.btn_hack.clicked.connect(self.toggle_attack)
-        left_layout.addWidget(self.btn_hack)
-
-        # DASHBOARD
-        status_widget = QWidget()
-        status_widget.setStyleSheet("background-color: #2d2d2d; border-radius: 5px; padding: 5px; margin-top: 10px;")
-        status_layout = QVBoxLayout(status_widget)
-        status_layout.addWidget(QLabel("⚛️ QUANTUM LINK STATUS"))
-        self.lbl_qber = QLabel("QBER: 0.00%")
-        status_layout.addWidget(self.lbl_qber)
-        self.bar_qber = QProgressBar()
-        self.bar_qber.setRange(0, 100)
-        status_layout.addWidget(self.bar_qber)
-        left_layout.addWidget(status_widget)
+        if not self.is_hacker:
+            # DASHBOARD (Only for Alice/Bob)
+            status_widget = QWidget()
+            status_widget.setStyleSheet("background-color: #2d2d2d; border-radius: 5px; padding: 5px; margin-top: 10px;")
+            status_layout = QVBoxLayout(status_widget)
+            status_layout.addWidget(QLabel("⚛️ QUANTUM LINK STATUS"))
+            self.lbl_qber = QLabel("Tracking Channel Integrity...")
+            status_layout.addWidget(self.lbl_qber)
+            self.bar_qber = QProgressBar()
+            self.bar_qber.setRange(0, 100)
+            status_layout.addWidget(self.bar_qber)
+            left_layout.addWidget(status_widget)
+        else:
+            left_layout.addStretch()
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_status)
@@ -132,7 +177,7 @@ class QuMailClient(QMainWindow):
         compose_layout.addLayout(attach_layout)
         compose_layout.addWidget(self.btn_send)
         
-        # VIEW 2: MANUAL DECRYPT TOOL (NEW!)
+        # VIEW 2: MANUAL DECRYPT TOOL
         self.decrypt_tool_view = QWidget()
         dt_layout = QVBoxLayout(self.decrypt_tool_view)
         
@@ -162,28 +207,78 @@ class QuMailClient(QMainWindow):
         dt_layout.addWidget(QLabel("3. Result:"))
         dt_layout.addWidget(self.output_dt_plain)
 
+        # VIEW 3: HACKER DASHBOARD
+        self.hacker_view = QWidget()
+        h_layout = QVBoxLayout(self.hacker_view)
+        h_layout.addWidget(QLabel("<h2>🕵️ Darknet Interception Dashboard</h2>"))
+        
+        self.btn_toggle_listen = QPushButton("🔴 START LISTENING ON FIBER OPTIC LINE")
+        self.btn_toggle_listen.setCheckable(True)
+        self.btn_toggle_listen.setStyleSheet("background-color: #550000; color: white; border: 2px solid red; font-size: 16px; font-weight: bold; padding: 15px;")
+        self.btn_toggle_listen.clicked.connect(self.toggle_hacker_listen)
+        h_layout.addWidget(self.btn_toggle_listen)
+
+        self.table_intercepts = QTableWidget(0, 4)
+        self.table_intercepts.setHorizontalHeaderLabels(["Time", "Sender", "Receiver", "Intercepted Ciphertext"])
+        self.table_intercepts.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table_intercepts.setStyleSheet("background-color: #1a1a1a; color: #00ff00; gridline-color: #333;")
+        h_layout.addWidget(self.table_intercepts)
+        
+        self.btn_refresh_intercepts = QPushButton("🔄 Refresh Intercept Logs")
+        self.btn_refresh_intercepts.clicked.connect(self.refresh_intercepts)
+        h_layout.addWidget(self.btn_refresh_intercepts)
+
         # Add views to Stack
         self.right_pane.addWidget(self.read_view)        # Index 0
         self.right_pane.addWidget(self.compose_view)     # Index 1
         self.right_pane.addWidget(self.decrypt_tool_view) # Index 2
+        self.right_pane.addWidget(self.hacker_view)      # Index 3
         
         self.splitter.addWidget(left_widget)
-        self.splitter.addWidget(self.email_list)
+        if not self.is_hacker:
+            self.splitter.addWidget(self.email_list)
         self.splitter.addWidget(self.right_pane)
-        self.splitter.setSizes([250, 300, 650])
+        if not self.is_hacker:
+            self.splitter.setSizes([250, 300, 650])
+        else:
+            self.splitter.setSizes([250, 950])
         main_layout.addWidget(self.splitter)
         
         # --- INITIALIZATION ---
         db.init_db()
-        network.start_server(self.trigger_refresh, self.check_attack_status)
+        network.start_server(self.identity_config['port'], self.trigger_refresh, self.check_attack_status)
         
-        self.current_user = self.input_identity.text()
         self.current_folder = "inbox"
         self.current_attachment_path = None
         self.apply_dark_theme()
-        self.load_emails()
+        
+        if self.is_hacker:
+            self.right_pane.setCurrentIndex(3)
+            self.refresh_intercepts()
+        else:
+            self.load_emails()
 
     # --- LOGIC ---
+
+    def toggle_hacker_listen(self):
+        if self.btn_toggle_listen.isChecked():
+            self.btn_toggle_listen.setText("⚠️ LISTENING ACTIVE - INTERCEPTING PACKETS")
+            self.btn_toggle_listen.setStyleSheet("background-color: #ff3333; color: black; border: 2px solid green; font-size: 16px; font-weight: bold; padding: 15px;")
+            db.set_hacker_listening(True)
+        else:
+            self.btn_toggle_listen.setText("🔴 START LISTENING ON FIBER OPTIC LINE")
+            self.btn_toggle_listen.setStyleSheet("background-color: #550000; color: white; border: 2px solid red; font-size: 16px; font-weight: bold; padding: 15px;")
+            db.set_hacker_listening(False)
+
+    def refresh_intercepts(self):
+        logs = db.get_hacker_logs()
+        self.table_intercepts.setRowCount(0)
+        for row_idx, log in enumerate(logs):
+            self.table_intercepts.insertRow(row_idx)
+            self.table_intercepts.setItem(row_idx, 0, QTableWidgetItem(log[1]))
+            self.table_intercepts.setItem(row_idx, 1, QTableWidgetItem(log[2]))
+            self.table_intercepts.setItem(row_idx, 2, QTableWidgetItem(log[3]))
+            self.table_intercepts.setItem(row_idx, 3, QTableWidgetItem(log[4]))
 
     def run_manual_decryption(self):
         """Decrypts text pasted from external sources (Gmail)"""
@@ -220,14 +315,14 @@ class QuMailClient(QMainWindow):
             self.input_ip.show()
             self.input_password.hide()
             self.btn_send.setText("🚀 Beam to Target PC")
-            self.input_ip.setPlaceholderText("Target IP (e.g., 192.168.1.5)")
+            self.input_ip.setPlaceholderText("Target IP (e.g., 127.0.0.1)")
         else:
             self.input_ip.hide()
             self.input_password.show()
             self.btn_send.setText("✉️ Send Encrypted Gmail")
 
     def check_attack_status(self):
-        return self.btn_hack.isChecked()
+        return db.is_hacker_listening()
 
     def trigger_refresh(self, security_alert=False):
         if security_alert:
@@ -322,8 +417,11 @@ QUANTUM KEY (Copy this):
                 QMessageBox.critical(self, "Gmail Error", f"Could not send:\n{msg}")
 
     def update_status(self):
+        if self.is_hacker: return # Hackers do not have QBER bars
+        
         noise = random.uniform(0.1, 1.5)
-        if self.btn_hack.isChecked(): 
+        # Fix: btn_hack no longer exists, use db method to know if hacker is listening
+        if db.is_hacker_listening(): 
             noise = random.uniform(25.0, 55.0)
             self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #ff3333; }")
         else:
@@ -332,11 +430,7 @@ QUANTUM KEY (Copy this):
         self.lbl_qber.setText(f"QBER: {noise:.2f}%")
 
     def toggle_attack(self):
-        if self.btn_hack.isChecked():
-            self.btn_hack.setText("⚠️ ATTACK ACTIVE")
-            QMessageBox.warning(self, "INTERCEPTION STARTED", "Channel Compromised!")
-        else:
-            self.btn_hack.setText("🔴 SIMULATE ATTACK")
+        pass # Deprecated, logic moved to toggle_hacker_listen
 
     def switch_mode(self, index):
         # 0=Inbox, 1=Compose, 2=Sent, 3=Decrypt Tool
@@ -425,8 +519,28 @@ QUANTUM KEY (Copy this):
             QSplitter::handle { background-color: #444; }
         """)
 
-if __name__ == "__main__":
+def main():
     app = QApplication(sys.argv)
-    window = QuMailClient()
-    window.show()
-    sys.exit(app.exec())
+    app.setQuitOnLastWindowClosed(False) # Prevent quitting when the dialog closes
+    
+    # 1. Ask for Identity First
+    selector = IdentitySelector()
+    if selector.exec() == QDialog.DialogCode.Accepted and selector.selected_identity:
+        try:
+            # 2. Launch Client with that Identity
+            app.setQuitOnLastWindowClosed(True) # Re-enable standard close behavior
+            window = QuMailClient(selector.selected_identity)
+            window.show()
+            sys.exit(app.exec())
+        except Exception as e:
+            import traceback
+            with open("crash.log", "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
+            print(f"CRASH LOG EXPORTED: {e}")
+            sys.exit(1)
+    else:
+        # User cancelled
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()
