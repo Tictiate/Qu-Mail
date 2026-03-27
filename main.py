@@ -246,7 +246,7 @@ class QuMailClient(QMainWindow):
         
         # --- INITIALIZATION ---
         db.init_db()
-        network.start_server(self.identity_config['port'], self.trigger_refresh, self.check_attack_status)
+        network.start_server(self.identity_config['port'], self.trigger_refresh, self.check_attack_status, self.on_interception_detected)
         
         self.current_folder = "inbox"
         self.current_attachment_path = None
@@ -257,6 +257,7 @@ class QuMailClient(QMainWindow):
             self.refresh_intercepts()
         else:
             self.load_emails()
+            self.setup_qber_alert()  # Initialize Phase 3
 
     # --- LOGIC ---
 
@@ -336,6 +337,24 @@ class QuMailClient(QMainWindow):
                              "Eavesdropper (Eve) Detected!\n\n"
                              "The message was DESTROYED in transit.")
 
+    # Phase 2: Receiver-side interception alert
+    def on_interception_detected(self, sender, receiver):
+        """Called when Bob's server detects an attempted interception by Eve"""
+        if self.current_user == receiver:
+            QTimer.singleShot(0, lambda: QMessageBox.critical(
+                self, "🛑 INCOMING EMAIL BLOCKED",
+                f"Eavesdropper (Eve) was detected on the quantum channel.\n\n"
+                f"Email from: {sender}\n"
+                f"Message automatically destroyed to protect privacy."
+            ))
+
+    # Phase 3: Proactive QBER alert tracking
+    def setup_qber_alert(self):
+        """Initialize QBER alert system (Phase 3)"""
+        self.qber_alert_threshold = 20.0  # Alert if QBER > 20%
+        self.last_alert_time = 0  # Track time to avoid spam
+        self.qber_alert_cooldown = 2000  # Alert once per 2 seconds minimum
+
     def update_identity(self):
         self.current_user = self.input_identity.text()
         self.load_emails()
@@ -344,6 +363,15 @@ class QuMailClient(QMainWindow):
         receiver = self.input_to.text().strip()
         subject = self.input_subject.text().strip()
         body = self.input_body.toPlainText().strip()
+        
+        # Phase 1: Check for eavesdropper BEFORE sending
+        if db.is_hacker_listening():
+            QMessageBox.critical(self, "🛑 EAVESDROPPER DETECTED",
+                f"Email to {receiver} was NOT sent.\n\n"
+                f"Reason: Eavesdropper (Eve) detected on quantum channel.\n"
+                f"Message automatically blocked to prevent interception.\n\n"
+                f"Wait for the channel to be cleared.")
+            return
         
         # --- 1. ENCRYPTION ---
         key_id, key = crypto.generate_quantum_key()
@@ -366,16 +394,29 @@ class QuMailClient(QMainWindow):
                 QMessageBox.warning(self, "Missing Info", "Please enter Target IP and Receiver!")
                 return
             
+            # Get receiver's port from IDENTITIES
+            if receiver not in IDENTITIES:
+                QMessageBox.warning(self, "Unknown Recipient", f"Recipient {receiver} not found in identities!")
+                return
+            target_port = IDENTITIES[receiver]['port']
+            
             try:
                 db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
-                success, msg = network.send_p2p_email(target_ip, self.current_user, receiver, subject, encrypted_body, key_id, key.decode(), filename, encrypted_file)
+                success, msg = network.send_p2p_email(target_ip, target_port, self.current_user, receiver, subject, encrypted_body, key_id, key.decode(), filename, encrypted_file)
 
                 if success:
-                    QMessageBox.information(self, "Sent", f"Message Beamed to {target_ip}!")
+                    QMessageBox.information(self, "✅ Sent Successfully", f"Message Beamed to {target_ip}!")
                     self.input_body.clear()
                     self.nav_list.setCurrentRow(2) 
                 else:
-                    QMessageBox.critical(self, "Failed", f"Connection Error:\n{msg}")
+                    # Phase 1: Enhanced error messaging for interception
+                    if msg == "INTERCEPTED":
+                        QMessageBox.critical(self, "🛑 EAVESDROPPER DETECTED",
+                            f"Email was intercepted by Eve during transmission.\n\n"
+                            f"Recipient: {receiver}\n"
+                            f"Status: Message destroyed in quantum state.")
+                    else:
+                        QMessageBox.critical(self, "Failed", f"Connection Error:\n{msg}")
 
             except Exception as e:
                 QMessageBox.critical(self, "Error", str(e))
@@ -414,7 +455,13 @@ QUANTUM KEY (Copy this):
                 db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
                 self.nav_list.setCurrentRow(2)
             else:
-                QMessageBox.critical(self, "Gmail Error", f"Could not send:\n{msg}")
+                # Phase 1: Enhanced error messaging for Gmail interception
+                if msg == "INTERCEPTED":
+                    QMessageBox.critical(self, "🛑 EAVESDROPPER DETECTED",
+                        f"Email to {receiver} was blocked by Eve.\n\n"
+                        f"Status: Message destroyed in quantum state.")
+                else:
+                    QMessageBox.critical(self, "Gmail Error", f"Could not send:\n{msg}")
 
     def update_status(self):
         if self.is_hacker: return # Hackers do not have QBER bars
@@ -424,6 +471,17 @@ QUANTUM KEY (Copy this):
         if db.is_hacker_listening(): 
             noise = random.uniform(25.0, 55.0)
             self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #ff3333; }")
+            
+            # Phase 3: Proactive QBER alert system
+            import time
+            current_time_ms = int(time.time() * 1000)
+            
+            if noise > self.qber_alert_threshold and (current_time_ms - self.last_alert_time) > self.qber_alert_cooldown:
+                self.last_alert_time = current_time_ms
+                QMessageBox.warning(self, "⚠️ QUANTUM LINK COMPROMISED",
+                    f"High QBER detected: {noise:.2f}%\n\n"
+                    f"Suspect eavesdropping activity.\n"
+                    f"Consider stopping communication with Bob.")
         else:
             self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #00ff00; }")
         self.bar_qber.setValue(int(noise))

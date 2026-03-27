@@ -7,11 +7,12 @@ from . import db
 PORT = 5005 
 
 # 👇 THIS LINE IS THE FIX. MAKE SURE IT HAS BOTH ARGUMENTS.
-def start_server(port, update_callback=None, is_attack_active_callback=None):
+def start_server(port, update_callback=None, is_attack_active_callback=None, on_interception_callback=None):
     """
     Bob runs this to listen.
     update_callback: Function to refresh UI.
     is_attack_active_callback: Function that returns True if attack is ON.
+    on_interception_callback: Function to call when an interception is detected (Phase 2).
     """
     def listener():
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -54,6 +55,10 @@ def start_server(port, update_callback=None, is_attack_active_callback=None):
                     if attack_on:
                         print("[!] ATTACK DETECTED! Message intercepted by Eve.")
                         print("[!] DESTROYING MESSAGE. Nothing will be saved to DB.")
+                        
+                        # Phase 2: Call interception callback to alert receiver (Bob)
+                        if on_interception_callback:
+                            on_interception_callback(email_data.get('sender'), email_data.get('receiver'))
                         
                         if update_callback:
                             update_callback(security_alert=True)
