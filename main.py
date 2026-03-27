@@ -247,6 +247,11 @@ class QuMailClient(QMainWindow):
         # --- INITIALIZATION ---
         db.init_db()
         network.start_hacker_state_listener()  # Listen to hacker broadcasts from other machines
+
+        if self.is_hacker:
+            db.set_hacker_listening(True)
+            network.broadcast_hacker_state(True)
+
         network.start_server(self.identity_config['port'], self.trigger_refresh, self.check_attack_status, self.on_interception_detected)
         
         self.current_folder = "inbox"
@@ -263,6 +268,7 @@ class QuMailClient(QMainWindow):
     # --- LOGIC ---
 
     def toggle_hacker_listen(self):
+        # This button is now legacy; hacker mode lumps listening on login.
         if self.btn_toggle_listen.isChecked():
             self.btn_toggle_listen.setText("⚠️ LISTENING ACTIVE - INTERCEPTING PACKETS")
             self.btn_toggle_listen.setStyleSheet("background-color: #ff3333; color: black; border: 2px solid green; font-size: 16px; font-weight: bold; padding: 15px;")
@@ -273,6 +279,12 @@ class QuMailClient(QMainWindow):
             self.btn_toggle_listen.setStyleSheet("background-color: #550000; color: white; border: 2px solid red; font-size: 16px; font-weight: bold; padding: 15px;")
             db.set_hacker_listening(False)
             network.broadcast_hacker_state(False)
+
+    def closeEvent(self, event):
+        if self.is_hacker:
+            db.set_hacker_listening(False)
+            network.broadcast_hacker_state(False)
+        event.accept()
 
     def refresh_intercepts(self):
         logs = db.get_hacker_logs()
