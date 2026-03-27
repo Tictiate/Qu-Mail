@@ -499,28 +499,34 @@ QUANTUM KEY (Copy this):
                     QMessageBox.critical(self, "Gmail Error", f"Could not send:\n{msg}")
 
     def update_status(self):
-        if self.is_hacker: return # Hackers do not have QBER bars
-        
-        noise = random.uniform(0.1, 1.5)
-        if db.is_hacker_listening(): 
-            noise = random.uniform(25.0, 55.0)
-            self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #ff3333; }")
+        hacking = db.is_hacker_listening()
+
+        # Banner state is global and should always reflect current attacker status
+        if hacking:
             self.lbl_hacker_banner.setText("⚠️ Eavesdropping active — QBER spike detected")
             self.lbl_hacker_banner.setStyleSheet("color: #ff4444; font-weight: bold; margin-top: 8px;")
 
-            # Show one-time warning when hackers are actively listening
-            if not self.hacker_alert_shown:
+            # One-time popup alert for non-hacker clients
+            if not self.is_hacker and not self.hacker_alert_shown:
                 self.hacker_alert_shown = True
                 QMessageBox.warning(self, "⚠️ QUANTUM LINK COMPROMISED",
                     "Eavesdropping detected on the network.\n"
                     "Your transmission is at risk and may be destroyed.")
         else:
-            if self.hacker_alert_shown:
-                self.hacker_alert_shown = False
-
-            self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #00ff00; }")
             self.lbl_hacker_banner.setText("✅ Quantum channel is clean")
             self.lbl_hacker_banner.setStyleSheet("color: #00ff00; font-weight: bold; margin-top: 8px;")
+            self.hacker_alert_shown = False
+
+        # QBER visualization only for non-hacker clients
+        if self.is_hacker:
+            return
+
+        noise = random.uniform(0.1, 1.5)
+        if hacking:
+            noise = random.uniform(25.0, 55.0)
+            self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #ff3333; }")
+        else:
+            self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #00ff00; }")
 
         self.bar_qber.setValue(int(noise))
         self.lbl_qber.setText(f"QBER: {noise:.2f}%")
