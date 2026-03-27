@@ -383,7 +383,9 @@ class QuMailClient(QMainWindow):
         intercepted = len(db.get_hacker_logs())
         events = db.get_channel_events(200)
         failed = len([e for e in events if e[2] in ("send_failed", "handshake_failed")])
-        self.lbl_metrics.setText(f"Messages: {sent} sent | {intercepted} intercepted | {failed} failures")
+        # Only update metrics label if it exists (non-hacker mode only)
+        if hasattr(self, 'lbl_metrics'):
+            self.lbl_metrics.setText(f"Messages: {sent} sent | {intercepted} intercepted | {failed} failures")
 
     # Phase 2: Receiver-side interception alert
     def on_interception_detected(self, sender, receiver):
