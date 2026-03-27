@@ -246,6 +246,7 @@ class QuMailClient(QMainWindow):
         
         # --- INITIALIZATION ---
         db.init_db()
+        network.start_hacker_state_listener()  # Listen to hacker broadcasts from other machines
         network.start_server(self.identity_config['port'], self.trigger_refresh, self.check_attack_status, self.on_interception_detected)
         
         self.current_folder = "inbox"
@@ -266,10 +267,12 @@ class QuMailClient(QMainWindow):
             self.btn_toggle_listen.setText("⚠️ LISTENING ACTIVE - INTERCEPTING PACKETS")
             self.btn_toggle_listen.setStyleSheet("background-color: #ff3333; color: black; border: 2px solid green; font-size: 16px; font-weight: bold; padding: 15px;")
             db.set_hacker_listening(True)
+            network.broadcast_hacker_state(True)
         else:
             self.btn_toggle_listen.setText("🔴 START LISTENING ON FIBER OPTIC LINE")
             self.btn_toggle_listen.setStyleSheet("background-color: #550000; color: white; border: 2px solid red; font-size: 16px; font-weight: bold; padding: 15px;")
             db.set_hacker_listening(False)
+            network.broadcast_hacker_state(False)
 
     def refresh_intercepts(self):
         logs = db.get_hacker_logs()
