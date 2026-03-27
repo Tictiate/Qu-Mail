@@ -272,7 +272,9 @@ class QuMailClient(QMainWindow):
             network.broadcast_hacker_state(True)
             network.start_hacker_state_publisher()
         else:
-            network.query_hacker_state()  # battery: learn current state on login
+            db.set_hacker_listening(False)  # clear stale state locally
+            network.query_hacker_state()  # learn active attacker state on login
+            network.start_hacker_state_query_loop()
 
         network.start_server(self.identity_config['port'], self.trigger_refresh, self.check_attack_status, self.on_interception_detected)
         
@@ -362,7 +364,7 @@ class QuMailClient(QMainWindow):
             self.btn_send.setText("✉️ Send Encrypted Gmail")
 
     def check_attack_status(self):
-        return db.is_hacker_listening()
+        return network.is_hacker_active()
 
     def trigger_refresh(self, security_alert=False):
         if security_alert:
@@ -411,7 +413,7 @@ class QuMailClient(QMainWindow):
         body = self.input_body.toPlainText().strip()
         
         # Phase 1: Check for eavesdropper BEFORE sending
-        if db.is_hacker_listening():
+        if network.is_hacker_active():
             QMessageBox.critical(self, "🛑 EAVESDROPPER DETECTED",
                 f"Email to {receiver} was NOT sent.\n\n"
                 f"Reason: Eavesdropper (Eve) detected on quantum channel.\n"
@@ -420,7 +422,7 @@ class QuMailClient(QMainWindow):
             return
 
         # Additional fail-safe for Gmail path, in case status changed since check
-        if self.radio_gmail.isChecked() and db.is_hacker_listening():
+        if self.radio_gmail.isChecked() and network.is_hacker_active():
             QMessageBox.critical(self, "🛑 EAVESDROPPER DETECTED",
                                    "Cannot send through Gmail while quantum eavesdropping is active.")
             return
@@ -520,7 +522,7 @@ QUANTUM KEY (Copy this):
                     QMessageBox.critical(self, "Gmail Error", f"Could not send:\n{msg}")
 
     def update_status(self):
-        hacking = db.is_hacker_listening()
+        hacking = network.is_hacker_active()
 
         # Banner state is global and should always reflect current attacker status
         if hacking:

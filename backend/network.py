@@ -206,6 +206,9 @@ def send_p2p_email(target_ip, target_port, sender, receiver, subject, ciphertext
 HACKER_BROADCAST_PORT = 5009
 HACKER_BROADCAST_MESSAGE = "QUMAIL_HACKER"
 HACKER_STATE_QUERY = "QUMAIL_HACKER_QUERY"
+HACKER_EXPIRATION_SECONDS = 5
+
+hacker_last_seen_ts = 0
 
 
 def broadcast_hacker_state(enabled: bool):
@@ -243,13 +246,14 @@ def start_hacker_state_listener():
             print(f"WARN: Could not bind broadcast port {HACKER_BROADCAST_PORT}: {e}")
             return
 
+        global hacker_last_seen_ts
         while True:
             try:
                 data, addr = sock.recvfrom(1024)
                 msg = data.decode('utf-8', errors='ignore')
 
                 if msg == HACKER_STATE_QUERY:
-                    # A new client is asking for state; respond if hacking is active
+                    # A new client asks for current state; answer only when attacker known active
                     if db.is_hacker_listening():
                         sock.sendto(f"{HACKER_BROADCAST_MESSAGE}:1".encode('utf-8'), addr)
                     continue
@@ -259,7 +263,11 @@ def start_hacker_state_listener():
 
                 _, state = msg.split(":", 1)
                 hacking = state.strip() == "1"
-                db.set_hacker_listening(hacking)
+                if hacking:
+                    hacker_last_seen_ts = time.time()
+                    db.set_hacker_listening(True)
+                else:
+                    db.set_hacker_listening(False)
                 print(f"DEBUG: Hacker broadcast from {addr}, active={hacking}")
             except Exception as e:
                 print(f"WARN: Hacker listener error: {e}")
@@ -276,4 +284,25 @@ def start_hacker_state_publisher():
             time.sleep(1)
 
     t = threading.Thread(target=publisher, daemon=True)
+    t.start()
+
+
+def is_hacker_active():
+    global hacker_last_seen_ts
+    # Ensure DB state expires if no recent broadcast
+    if db.is_hacker_listening():
+        if time.time() - hacker_last_seen_ts > HACKER_EXPIRATION_SECONDS:
+            db.set_hacker_listening(False)
+            return False
+        return True
+    return False
+
+
+def start_hacker_state_query_loop():
+    def query_loop():
+        while True:
+            query_hacker_state()
+            time.sleep(2)
+
+    t = threading.Thread(target=query_loop, daemon=True)
     t.start()
