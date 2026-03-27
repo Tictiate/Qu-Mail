@@ -69,14 +69,18 @@ def start_server(port, update_callback=None, is_attack_active_callback=None, on_
                 print(f"[+] Connection from {addr}")
                 
                 try:
-                    # 1. Receive Data
+                    # 1. Receive Data with timeout to prevent hanging
+                    client.settimeout(2)  # 2-second timeout to avoid EOF deadlock
                     data = b""
-                    while True:
-                        packet = client.recv(4096)
-                        if not packet: break
-                        data += packet
+                    try:
+                        # Try to receive data (will timeout if client doesn't send anything)
+                        data = client.recv(4096)
+                    except socket.timeout:
+                        # Timeout is OK, client might have sent everything in one packet
+                        pass
                     
                     if not data:
+                        client.close()
                         continue
 
                     # 2. Parse JSON
