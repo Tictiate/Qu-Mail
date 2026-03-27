@@ -265,6 +265,9 @@ class QuMailClient(QMainWindow):
         if self.is_hacker:
             db.set_hacker_listening(True)
             network.broadcast_hacker_state(True)
+            network.start_hacker_state_publisher()
+        else:
+            network.query_hacker_state()  # battery: learn current state on login
 
         network.start_server(self.identity_config['port'], self.trigger_refresh, self.check_attack_status, self.on_interception_detected)
         
@@ -402,6 +405,12 @@ class QuMailClient(QMainWindow):
                 f"Reason: Eavesdropper (Eve) detected on quantum channel.\n"
                 f"Message automatically blocked to prevent interception.\n\n"
                 f"Wait for the channel to be cleared.")
+            return
+
+        # Additional fail-safe for Gmail path, in case status changed since check
+        if self.radio_gmail.isChecked() and db.is_hacker_listening():
+            QMessageBox.critical(self, "🛑 EAVESDROPPER DETECTED",
+                                   "Cannot send through Gmail while quantum eavesdropping is active.")
             return
         
         # --- 1. ENCRYPTION ---

@@ -1,6 +1,7 @@
 import socket
 import json
 import threading
+import time
 from . import db
 
 # Port to listen on (Dynamic now)
@@ -133,6 +134,7 @@ def send_p2p_email(target_ip, target_port, sender, receiver, subject, ciphertext
 # --- Hacker state broadcast for cross-machine operation ---
 HACKER_BROADCAST_PORT = 5009
 HACKER_BROADCAST_MESSAGE = "QUMAIL_HACKER"
+HACKER_STATE_QUERY = "QUMAIL_HACKER_QUERY"
 
 
 def broadcast_hacker_state(enabled: bool):
@@ -144,6 +146,18 @@ def broadcast_hacker_state(enabled: bool):
         sock.sendto(payload.encode('utf-8'), ('<broadcast>', HACKER_BROADCAST_PORT))
     except Exception as e:
         print(f"WARN: Could not broadcast hacker state: {e}")
+    finally:
+        sock.close()
+
+
+def query_hacker_state():
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(2)
+        sock.sendto(HACKER_STATE_QUERY.encode('utf-8'), ('<broadcast>', HACKER_BROADCAST_PORT))
+    except Exception as e:
+        print(f"WARN: Could not query hacker state: {e}")
     finally:
         sock.close()
 
@@ -162,16 +176,33 @@ def start_hacker_state_listener():
             try:
                 data, addr = sock.recvfrom(1024)
                 msg = data.decode('utf-8', errors='ignore')
+
+                if msg == HACKER_STATE_QUERY:
+                    # A new client is asking for state; respond if hacking is active
+                    if db.is_hacker_listening():
+                        sock.sendto(f"{HACKER_BROADCAST_MESSAGE}:1".encode('utf-8'), addr)
+                    continue
+
                 if not msg.startswith(HACKER_BROADCAST_MESSAGE):
                     continue
 
                 _, state = msg.split(":", 1)
                 hacking = state.strip() == "1"
-                # Only set hacker mode when explicitly indicated
                 db.set_hacker_listening(hacking)
                 print(f"DEBUG: Hacker broadcast from {addr}, active={hacking}")
             except Exception as e:
                 print(f"WARN: Hacker listener error: {e}")
 
     t = threading.Thread(target=listener, daemon=True)
+    t.start()
+
+
+def start_hacker_state_publisher():
+    def publisher():
+        while True:
+            if db.is_hacker_listening():
+                broadcast_hacker_state(True)
+            time.sleep(1)
+
+    t = threading.Thread(target=publisher, daemon=True)
     t.start()
