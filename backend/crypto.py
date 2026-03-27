@@ -8,11 +8,13 @@ def generate_quantum_key():
     return key_id, key
 
 def encrypt_content(message, key):
-    """Encrypts text. Accepts key as bytes or string."""
+    """Encrypts text. Accepts key as bytes or string (URL-safe base64)."""
     try:
-        # 1. Force Key to Bytes
+        # 1. Handle Key Format
+        # Fernet keys are URL-safe base64-encoded, so convert string to bytes directly
         if isinstance(key, str):
-            key = key.encode('utf-8')
+            key = key.strip()  # Remove whitespace that might have been added
+            key = key.encode('utf-8') if isinstance(key, str) else key
             
         f = Fernet(key)
         
@@ -23,16 +25,18 @@ def encrypt_content(message, key):
         return f"❌ Encryption Error: {str(e)}"
 
 def decrypt_content(ciphertext, key):
-    """Decrypts text. Accepts inputs as bytes or string."""
+    """Decrypts text. Accepts inputs as bytes or string (URL-safe base64)."""
     try:
-        # 1. Force Key to Bytes
+        # 1. Handle Key Format
+        # Key should be URL-safe base64-encoded string/bytes
         if isinstance(key, str):
-            key = key.strip().encode('utf-8') # Strip whitespace and encode
+            key = key.strip()  # Remove all surrounding whitespace
+            key = key.encode('utf-8')
             
-        # 2. Force Ciphertext to Bytes
+        # 2. Handle Ciphertext Format
         if isinstance(ciphertext, str):
             # IMPORTANT: Remove all newlines/spaces that might have been copied
-            ciphertext = ciphertext.replace(" ", "").replace("\n", "").replace("\r", "")
+            ciphertext = ciphertext.replace(" ", "").replace("\n", "").replace("\r", "").strip()
             ciphertext = ciphertext.encode('utf-8')
 
         f = Fernet(key)

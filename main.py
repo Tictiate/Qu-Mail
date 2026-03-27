@@ -546,7 +546,11 @@ QUANTUM KEY (Copy this):
         if self.selected_email_data:
             key_id = self.selected_email_data[5]
             ciphertext = self.selected_email_data[4]
-            plaintext = crypto.decrypt_content(ciphertext, key_id)
+            key_value = db.get_key(key_id)  # Get the actual key from database
+            if not key_value:
+                QMessageBox.critical(self, "Error", f"Key not found for ID: {key_id}")
+                return
+            plaintext = crypto.decrypt_content(ciphertext, key_value)
             if "❌" in plaintext: QMessageBox.critical(self, "Security Alert", plaintext)
             else: 
                 self.txt_body.setText(plaintext)
@@ -557,7 +561,11 @@ QUANTUM KEY (Copy this):
         filename = self.selected_email_data[7]
         encrypted_blob = self.selected_email_data[8]
         key_id = self.selected_email_data[5]
-        decrypted_bytes = crypto.decrypt_file_bytes(encrypted_blob, key_id)
+        key_value = db.get_key(key_id)  # Get the actual key from database
+        if not key_value:
+            QMessageBox.critical(self, "Error", f"Key not found for ID: {key_id}")
+            return
+        decrypted_bytes = crypto.decrypt_file_bytes(encrypted_blob, key_value)
         if not decrypted_bytes: return
         save_path, _ = QFileDialog.getSaveFileName(self, "Save File", filename)
         if save_path:
