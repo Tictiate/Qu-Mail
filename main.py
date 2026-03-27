@@ -72,6 +72,11 @@ class QuMailClient(QMainWindow):
         left_layout.addWidget(lbl_identity)
         left_layout.addWidget(QLabel(f"Email: {self.current_user}"))
         left_layout.addWidget(QLabel(f"Port: {self.identity_config['port']}"))
+
+        self.lbl_hacker_banner = QLabel("✅ Quantum channel is clean")
+        self.lbl_hacker_banner.setStyleSheet("color: #00ff00; font-weight: bold; margin-top: 8px;")
+        left_layout.addWidget(self.lbl_hacker_banner)
+
         left_layout.addSpacing(20)
         
         self.nav_list = QListWidget()
@@ -107,6 +112,9 @@ class QuMailClient(QMainWindow):
         self.email_list = QListWidget()
         self.email_list.itemClicked.connect(self.open_email)
         
+        # Track if we already showed hacker warning once
+        self.hacker_alert_shown = False
+
         # --- RIGHT PANE ---
         self.right_pane = QStackedWidget()
         
@@ -151,7 +159,12 @@ class QuMailClient(QMainWindow):
         self.input_password.setPlaceholderText("Gmail App Password")
         self.input_password.setEchoMode(QLineEdit.EchoMode.Password)
         self.input_password.hide() 
-        
+
+        self.input_from = QLineEdit()
+        self.input_from.setPlaceholderText("From (Gmail): alice@example.com")
+        self.input_from.setText(self.current_user)
+        self.input_from.hide()
+
         self.input_to = QLineEdit()
         self.input_to.setPlaceholderText("To: bob@quantum.com")
         self.input_subject = QLineEdit()
@@ -170,6 +183,7 @@ class QuMailClient(QMainWindow):
         self.btn_send.clicked.connect(self.send_email)
         
         compose_layout.addWidget(self.input_ip)
+        compose_layout.addWidget(self.input_from)
         compose_layout.addWidget(self.input_password)
         compose_layout.addWidget(self.input_to)
         compose_layout.addWidget(self.input_subject)
@@ -329,11 +343,13 @@ class QuMailClient(QMainWindow):
     def toggle_compose_mode(self):
         if self.radio_p2p.isChecked():
             self.input_ip.show()
+            self.input_from.hide()
             self.input_password.hide()
             self.btn_send.setText("🚀 Beam to Target PC")
             self.input_ip.setPlaceholderText("Target IP (e.g., 127.0.0.1)")
         else:
             self.input_ip.hide()
+            self.input_from.show()
             self.input_password.show()
             self.btn_send.setText("✉️ Send Encrypted Gmail")
 
@@ -438,7 +454,11 @@ class QuMailClient(QMainWindow):
         
         # MODE 2: GMAIL
         else:
+            sender_email = self.input_from.text().strip() or self.current_user
             sender_password = self.input_password.text().strip()
+            if not sender_email:
+                QMessageBox.warning(self, "Missing From Email", "Please enter a source Gmail address!")
+                return
             if not sender_password:
                 QMessageBox.warning(self, "Missing Password", "Please enter Gmail App Password!")
                 return
@@ -457,7 +477,7 @@ QUANTUM KEY (Copy this):
             """
 
             success, msg = smtp_client.send_gmail(
-                self.current_user, 
+                sender_email, 
                 sender_password, 
                 receiver, 
                 subject, 
@@ -482,23 +502,26 @@ QUANTUM KEY (Copy this):
         if self.is_hacker: return # Hackers do not have QBER bars
         
         noise = random.uniform(0.1, 1.5)
-        # Fix: btn_hack no longer exists, use db method to know if hacker is listening
         if db.is_hacker_listening(): 
             noise = random.uniform(25.0, 55.0)
             self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #ff3333; }")
-            
-            # Phase 3: Proactive QBER alert system
-            import time
-            current_time_ms = int(time.time() * 1000)
-            
-            if noise > self.qber_alert_threshold and (current_time_ms - self.last_alert_time) > self.qber_alert_cooldown:
-                self.last_alert_time = current_time_ms
+            self.lbl_hacker_banner.setText("⚠️ Eavesdropping active — QBER spike detected")
+            self.lbl_hacker_banner.setStyleSheet("color: #ff4444; font-weight: bold; margin-top: 8px;")
+
+            # Show one-time warning when hackers are actively listening
+            if not self.hacker_alert_shown:
+                self.hacker_alert_shown = True
                 QMessageBox.warning(self, "⚠️ QUANTUM LINK COMPROMISED",
-                    f"High QBER detected: {noise:.2f}%\n\n"
-                    f"Suspect eavesdropping activity.\n"
-                    f"Consider stopping communication with Bob.")
+                    "Eavesdropping detected on the network.\n"
+                    "Your transmission is at risk and may be destroyed.")
         else:
+            if self.hacker_alert_shown:
+                self.hacker_alert_shown = False
+
             self.bar_qber.setStyleSheet("QProgressBar::chunk { background-color: #00ff00; }")
+            self.lbl_hacker_banner.setText("✅ Quantum channel is clean")
+            self.lbl_hacker_banner.setStyleSheet("color: #00ff00; font-weight: bold; margin-top: 8px;")
+
         self.bar_qber.setValue(int(noise))
         self.lbl_qber.setText(f"QBER: {noise:.2f}%")
 
