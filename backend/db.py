@@ -36,6 +36,11 @@ conn = init_db()
 c = conn.cursor()
 
 def save_email(sender, receiver, subject, ciphertext, key_id, filename=None, file_data=None):
+    # Prevent duplicate records when running multiple identities sharing same DB file
+    c.execute("SELECT 1 FROM emails WHERE key_id = ? AND sender = ? AND receiver = ? LIMIT 1", (key_id, sender, receiver))
+    if c.fetchone():
+        return
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     c.execute("""INSERT INTO emails 
                  (sender, receiver, subject, body_ciphertext, key_id, timestamp, filename, file_blob) 

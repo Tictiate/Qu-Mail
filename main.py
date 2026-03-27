@@ -112,6 +112,7 @@ class QuMailClient(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_status)
         self.timer.start(1000)
+        self.hacking_state = False
 
         # --- MIDDLE PANE ---
         self.email_list = QListWidget()
@@ -269,6 +270,7 @@ class QuMailClient(QMainWindow):
 
         if self.is_hacker:
             db.set_hacker_listening(True)
+            network.set_hacker_last_seen()
             network.broadcast_hacker_state(True)
             network.start_hacker_state_publisher()
         else:
@@ -416,11 +418,10 @@ class QuMailClient(QMainWindow):
         
         # Phase 1: Check for eavesdropper BEFORE sending
         if network.is_hacker_active():
-            QMessageBox.critical(self, "🛑 EAVESDROPPER DETECTED",
-                f"Email to {receiver} was NOT sent.\n\n"
-                f"Reason: Eavesdropper (Eve) detected on quantum channel.\n"
-                f"Message automatically blocked to prevent interception.\n\n"
-                f"Wait for the channel to be cleared.")
+            QMessageBox.critical(self, "🛑 EAVESDROP LISTENING DETECTED",
+                f"Eavesdropper (Eve) is currently listening on the channel.\n\n"
+                f"Email to {receiver} was NOT sent.\n"
+                f"Wait until channel status turns clean (✅) and retry.")
             return
 
         # Additional fail-safe for Gmail path, in case status changed since check
@@ -457,10 +458,10 @@ class QuMailClient(QMainWindow):
             target_port = IDENTITIES[receiver]['port']
             
             try:
-                db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
                 success, msg = network.send_p2p_email(target_ip, target_port, self.current_user, receiver, subject, encrypted_body, key_id, key.decode(), filename, encrypted_file)
 
                 if success:
+                    db.save_email(self.current_user, receiver, subject, encrypted_body, key_id, filename, encrypted_file)
                     QMessageBox.information(self, "✅ Sent Successfully", f"Message Beamed to {target_ip}!")
                     self.input_body.clear()
                     self.nav_list.setCurrentRow(2) 
@@ -531,16 +532,17 @@ QUANTUM KEY (Copy this):
             self.lbl_hacker_banner.setText("⚠️ Eavesdropping active — QBER spike detected")
             self.lbl_hacker_banner.setStyleSheet("color: #ff4444; font-weight: bold; margin-top: 8px;")
 
-            # One-time popup alert for non-hacker clients
-            if not self.is_hacker and not self.hacker_alert_shown:
-                self.hacker_alert_shown = True
+            # Persistent transition popup for non-hacker clients
+            if not self.is_hacker and not self.hacking_state:
                 QMessageBox.warning(self, "⚠️ QUANTUM LINK COMPROMISED",
                     "Eavesdropping detected on the network.\n"
                     "Your transmission is at risk and may be destroyed.")
+
+            self.hacking_state = True
         else:
             self.lbl_hacker_banner.setText("✅ Quantum channel is clean")
             self.lbl_hacker_banner.setStyleSheet("color: #00ff00; font-weight: bold; margin-top: 8px;")
-            self.hacker_alert_shown = False
+            self.hacking_state = False
 
         # QBER visualization only for non-hacker clients
         if self.is_hacker:

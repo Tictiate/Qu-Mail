@@ -174,10 +174,9 @@ def send_p2p_email(target_ip, target_port, sender, receiver, subject, ciphertext
         transport = default_transport
 
     # 🔴 HACKER INTERCEPTION CHECK 🔴
-    if db.is_hacker_listening():
+    if is_hacker_active() or db.is_hacker_listening():
         db.log_intercept(sender, receiver, ciphertext)
         db.log_channel_event("interception", f"sender={sender};receiver={receiver}", qber=999)
-        db.set_hacker_listening(False) # Quantum state collapses!
         return False, "INTERCEPTED"
 
     # Phase 2: Authenticated QKD handshake (identity-used for demonstration)
@@ -268,9 +267,10 @@ def start_hacker_state_listener():
                 _, state = msg.split(":", 1)
                 hacking = state.strip() == "1"
                 if hacking:
-                    hacker_last_seen_ts = time.time()
+                    set_hacker_last_seen()
                     db.set_hacker_listening(True)
                 else:
+                    # Keep the attack lingering briefly; avoid transient 0->1 flaps
                     db.set_hacker_listening(False)
                 print(f"DEBUG: Hacker broadcast from {addr}, active={hacking}")
             except Exception as e:
@@ -284,6 +284,7 @@ def start_hacker_state_publisher():
     def publisher():
         while True:
             if db.is_hacker_listening():
+                set_hacker_last_seen()
                 broadcast_hacker_state(True)
             time.sleep(1)
 
@@ -291,10 +292,17 @@ def start_hacker_state_publisher():
     t.start()
 
 
+def set_hacker_last_seen():
+    global hacker_last_seen_ts
+    hacker_last_seen_ts = time.time()
+
+
 def is_hacker_active():
     global hacker_last_seen_ts
-    # Ensure DB state expires if no recent broadcast
+    # Ensure DB state expires if no recent broadcast (except initial local hacker state)
     if db.is_hacker_listening():
+        if hacker_last_seen_ts == 0:
+            return True
         if time.time() - hacker_last_seen_ts > HACKER_EXPIRATION_SECONDS:
             db.set_hacker_listening(False)
             return False
