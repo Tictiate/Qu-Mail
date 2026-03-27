@@ -3,9 +3,50 @@ import json
 import threading
 import time
 from . import db
+from . import crypto
 
 # Port to listen on (Dynamic now)
 PORT = 5005 
+
+# Transport plugin abstraction
+class TransportPlugin:
+    def send_email(self, target_ip, target_port, payload):
+        raise NotImplementedError()
+
+    def perform_handshake(self, target_ip, target_port, sender, secret):
+        raise NotImplementedError()
+
+
+class TCPTransportPlugin(TransportPlugin):
+    def send_email(self, target_ip, target_port, payload):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect((target_ip, target_port))
+        s.sendall(json.dumps(payload).encode('utf-8'))
+        s.close()
+
+    def perform_handshake(self, target_ip, target_port, sender, secret):
+        nonce = str(int(time.time() * 1000))
+        token = crypto.generate_handshake_token(secret, nonce)
+        hs_payload = {"type": "handshake", "sender": sender, "nonce": nonce, "token": token}
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect((target_ip, target_port))
+        s.sendall(json.dumps(hs_payload).encode('utf-8'))
+
+        try:
+            reply = s.recv(1024)
+            s.close()
+            if not reply: return False, "No handshake response"
+            resp = json.loads(reply.decode('utf-8'))
+            return resp.get("status") == "ok", resp.get("message", "")
+        except Exception as e:
+            s.close()
+            return False, str(e)
+
+
+default_transport = TCPTransportPlugin()
 
 # 👇 THIS LINE IS THE FIX. MAKE SURE IT HAS BOTH ARGUMENTS.
 def start_server(port, update_callback=None, is_attack_active_callback=None, on_interception_callback=None):
@@ -40,6 +81,28 @@ def start_server(port, update_callback=None, is_attack_active_callback=None, on_
 
                     # 2. Parse JSON
                     email_data = json.loads(data.decode('utf-8'))
+
+                    # Handshake handling (authenticated QKD)
+                    if email_data.get('type') == 'handshake':
+                        sender = email_data.get('sender')
+                        nonce = email_data.get('nonce')
+                        token = email_data.get('token')
+                        if sender and nonce and token:
+                            # Validate handshake token with seed-based secret using sender and nonce
+                            # For this prototype we assume secret = sender email itself (in real world use shared secret)
+                            if crypto.validate_handshake_token(sender, nonce, token):
+                                response = json.dumps({'status': 'ok', 'message': 'handshake confirmed'})
+                                client.sendall(response.encode('utf-8'))
+                                db.log_channel_event('handshake', f'{sender} -> {sender}', qber=None)
+                            else:
+                                response = json.dumps({'status': 'failed', 'message': 'invalid token'})
+                                client.sendall(response.encode('utf-8'))
+                                db.log_channel_event('handshake_failed', f'sender={sender}', qber=None)
+                        else:
+                            response = json.dumps({'status': 'failed', 'message': 'missing handshake fields'})
+                            client.sendall(response.encode('utf-8'))
+                        client.close()
+                        continue
 
                     # --- DEBUGGING LOGS ---
                     print("DEBUG: Checking Security Protocol...")
@@ -101,17 +164,27 @@ def start_server(port, update_callback=None, is_attack_active_callback=None, on_
     t = threading.Thread(target=listener, daemon=True)
     t.start()
 
-def send_p2p_email(target_ip, target_port, sender, receiver, subject, ciphertext, key_id, key_value, filename=None, file_bytes=None):
+def send_p2p_email(target_ip, target_port, sender, receiver, subject, ciphertext, key_id, key_value, filename=None, file_bytes=None, transport=None):
     """Alice runs this to beam data to Bob's IP."""
-    
+    if transport is None:
+        transport = default_transport
+
     # 🔴 HACKER INTERCEPTION CHECK 🔴
     if db.is_hacker_listening():
         db.log_intercept(sender, receiver, ciphertext)
+        db.log_channel_event("interception", f"sender={sender};receiver={receiver}", qber=999)
         db.set_hacker_listening(False) # Quantum state collapses!
         return False, "INTERCEPTED"
 
+    # Phase 2: Authenticated QKD handshake (identity-used for demonstration)
+    ok, msg = transport.perform_handshake(target_ip, target_port, sender, sender)
+    if not ok:
+        db.log_channel_event("handshake_failed", msg)
+        return False, f"Handshake failed: {msg}"
+
     try:
         payload = {
+            "type": "email",
             "sender": sender,
             "receiver": receiver,
             "subject": subject,
@@ -121,14 +194,12 @@ def send_p2p_email(target_ip, target_port, sender, receiver, subject, ciphertext
             "filename": filename,
             "file_hex": file_bytes.hex() if file_bytes else None
         }
-        
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(5) 
-        s.connect((target_ip, target_port))
-        s.sendall(json.dumps(payload).encode('utf-8'))
-        s.close()
+
+        transport.send_email(target_ip, target_port, payload)
+        db.log_channel_event("send", f"sender={sender};receiver={receiver}")
         return True, "Sent Successfully"
     except Exception as e:
+        db.log_channel_event("send_failed", str(e))
         return False, str(e)
 
 # --- Hacker state broadcast for cross-machine operation ---

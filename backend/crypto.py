@@ -1,5 +1,7 @@
 from cryptography.fernet import Fernet
 import base64
+import hmac
+import hashlib
 
 def generate_quantum_key():
     """Generates a random 32-byte key, returns (key_id, key_bytes)"""
@@ -59,3 +61,16 @@ def decrypt_file_bytes(encrypted_data, key):
         return f.decrypt(encrypted_data)
     except:
         return None
+
+
+# --- AUTHENTICATED QKD HANDSHAKE HELPERS ---
+def generate_handshake_token(identity, nonce):
+    """Generate deterministic token based on per-identity static secret and nonce."""
+    # 16-byte seed from identity string
+    secret = hashlib.sha256(identity.encode('utf-8')).digest()
+    return hmac.new(secret, nonce.encode('utf-8'), hashlib.sha256).hexdigest()
+
+
+def validate_handshake_token(identity, nonce, token):
+    expected = generate_handshake_token(identity, nonce)
+    return hmac.compare_digest(expected, token)

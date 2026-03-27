@@ -24,6 +24,10 @@ def init_db():
     # Hacker Logs Table
     c.execute('''CREATE TABLE IF NOT EXISTS hacker_logs
                  (id INTEGER PRIMARY KEY, timestamp TEXT, sender TEXT, receiver TEXT, intercepted_data TEXT)''')
+
+    # Channel Event Log (persistent QKD state, qber spikes, interception summary)
+    c.execute('''CREATE TABLE IF NOT EXISTS channel_events
+                 (id INTEGER PRIMARY KEY, timestamp TEXT, event_type TEXT, details TEXT, qber REAL)''')
                  
     conn.commit()
     return conn
@@ -87,6 +91,25 @@ def log_intercept(sender, receiver, data):
               (timestamp, sender, receiver, data))
     conn.commit()
     conn.close()
+
+def log_channel_event(event_type, details, qber=None):
+    conn = sqlite3.connect('qumail.db', check_same_thread=False)
+    c = conn.cursor()
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("INSERT INTO channel_events (timestamp,event_type,details,qber) VALUES (?, ?, ?, ?)",
+              (timestamp, event_type, details, qber))
+    conn.commit()
+    conn.close()
+
+
+def get_channel_events(limit=50):
+    conn = sqlite3.connect('qumail.db', check_same_thread=False)
+    c = conn.cursor()
+    c.execute("SELECT * FROM channel_events ORDER BY id DESC LIMIT ?", (limit,))
+    results = c.fetchall()
+    conn.close()
+    return results
+
 
 def get_hacker_logs():
     conn = sqlite3.connect('qumail.db', check_same_thread=False)

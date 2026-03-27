@@ -10,9 +10,9 @@ from backend import db, crypto, network, smtp_client
 
 # -- IDENTITY CONFIGURATION --
 IDENTITIES = {
-    "alice@quantum.com": {"port": 5001, "role": "user", "name": "Alice"},
-    "bob@quantum.com": {"port": 5002, "role": "user", "name": "Bob"},
-    "hacker@darknet.io": {"port": 5003, "role": "hacker", "name": "Eve (Hacker)"}
+    "alice@quantum.com": {"port": 5001, "role": "user", "name": "Alice", "secret": "alpha_secret_123"},
+    "bob@quantum.com": {"port": 5002, "role": "user", "name": "Bob", "secret": "beta_secret_456"},
+    "hacker@darknet.io": {"port": 5003, "role": "hacker", "name": "Eve (Hacker)", "secret": "eve_secret_999"}
 }
 
 class IdentitySelector(QDialog):
@@ -100,6 +100,11 @@ class QuMailClient(QMainWindow):
             self.bar_qber = QProgressBar()
             self.bar_qber.setRange(0, 100)
             status_layout.addWidget(self.bar_qber)
+
+            self.lbl_metrics = QLabel("Messages: 0 sent | 0 intercepted | 0 failures")
+            self.lbl_metrics.setStyleSheet("color: #00ff00; font-weight: bold;")
+            status_layout.addWidget(self.lbl_metrics)
+
             left_layout.addWidget(status_widget)
         else:
             left_layout.addStretch()
@@ -371,6 +376,13 @@ class QuMailClient(QMainWindow):
                              "Eavesdropper (Eve) Detected!\n\n"
                              "The message was DESTROYED in transit.")
 
+    def refresh_metrics(self):
+        sent = len(db.get_sent_box(self.current_user)) if not self.is_hacker else 0
+        intercepted = len(db.get_hacker_logs())
+        events = db.get_channel_events(200)
+        failed = len([e for e in events if e[2] in ("send_failed", "handshake_failed")])
+        self.lbl_metrics.setText(f"Messages: {sent} sent | {intercepted} intercepted | {failed} failures")
+
     # Phase 2: Receiver-side interception alert
     def on_interception_detected(self, sender, receiver):
         """Called when Bob's server detects an attempted interception by Eve"""
@@ -539,6 +551,7 @@ QUANTUM KEY (Copy this):
 
         self.bar_qber.setValue(int(noise))
         self.lbl_qber.setText(f"QBER: {noise:.2f}%")
+        self.refresh_metrics()
 
     def toggle_attack(self):
         pass # Deprecated, logic moved to toggle_hacker_listen
@@ -574,6 +587,8 @@ QUANTUM KEY (Copy this):
             self.email_list.addItem(f"{icon} {email[3]}\n{prefix} {display_name}")
             item = self.email_list.item(self.email_list.count() - 1)
             item.setData(Qt.ItemDataRole.UserRole, email)
+
+        self.refresh_metrics()
 
     def open_email(self, item):
         email_data = item.data(Qt.ItemDataRole.UserRole)
